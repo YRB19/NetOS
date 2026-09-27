@@ -1,0 +1,44 @@
+name: CI
+
+# Deliberately small: formatting/lint (ruff), type checks (mypy), unit
+# tests (pytest), and the ADR-6 import-isolation check. No deploy step,
+# no multi-OS/multi-version matrix, no CD — none of that is needed at
+# this project's scale (Stage 3 §22's "dependency-sprawl discipline"
+# extends to CI tooling, not just runtime dependencies).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project (with dev dependencies)
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        run: mypy domain shared
+        continue-on-error: true # advisory at this slice; not yet a hard gate
+
+      - name: Unit tests (pytest)
+        run: pytest -v
+
+      # This is the step that matters most: it is what makes ADR-6 an
+      # enforced CI gate, not merely a script that exists but isn't run.
+      - name: ADR-6 import-isolation check
+        run: python -m shared.arch_lint.cli .
