@@ -84,38 +84,44 @@ opaque" requirement.
 
 ## Provenance and assumptions — read this before trusting a number
 
-The default schedule, `INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED`
-(`shared/costs/schedule.py`), reflects the **commonly-published structure**
-of Indian equity transaction costs — the same component set and roughly the
-same rates that appear across multiple discount-broker charges pages
-(Zerodha/Upstox/FYERS-style rate cards) — but:
+**Slice 4.5B (2026-09-29) primary-source-verified this against official
+sources and issued a second schedule, `india-equity-v2-2026-03-verified`.**
+The original `INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED` is preserved unchanged
+(never edited in place — DOC-6) so research already run against it stays
+reproducible; new work should select V2.
 
-- **It has not been independently verified this session against a primary
-  regulatory source** (a SEBI circular, an NSE/BSE exchange circular, or
-  the Finance Act provisions governing STT/stamp duty). No prior Stage 0–3
-  document in this project established a verified, cited rate table for
-  these specific components — Stage 0/1's research focused on the
-  algo-trading regulatory framework (SEBI's Feb 2025 circular, order-rate
-  thresholds, static-IP/2FA rules), not on the STT/GST/stamp-duty rate
-  table itself.
-- The schedule's `verified` field is `False` and its `version_id` carries
-  an explicit `-unverified` suffix, precisely so a future verified schedule
-  cannot be confused with this one — per this project's own standing rule
-  against treating a plausible number as a confirmed one (see
-  `decisions-and-learnings.md`'s evidence-tiering discipline, applied here
-  to a regulatory rate table rather than a research claim).
-- This is **not** a claim that the rates are wrong — they are the
-  standard, widely-reproduced structure — only that this session did not
-  perform the primary-source verification the project's epistemology
-  requires before treating a number as authoritative.
+## Rate Verification Status
 
-**What this means practically:** the Cost Model is fully usable, testable,
-and buildable-against today. It must **not** be relied upon as the true
-cost basis for TR-2 (pre-trade cost estimation influencing sizing), PR-6
-(cost reconciliation), or PR-9 (net-of-costs profitability) until either
-(a) a primary-source review confirms these rates, or (b) a new, explicitly
-verified schedule version is issued to replace it. This is tracked as an
-open item (see `slice-status.md`).
+| Component | Status | Rate | Basis | Effective Date | Source | Notes |
+| --- | --- | ---: | --- | --- | --- | --- |
+| Brokerage (delivery) | CONFIGURABLE | ₹0 flat | per order | — | none (generic assumption) | Not a statutory or named-broker rate |
+| Brokerage (intraday) | CONFIGURABLE | min(₹20, 0.03%) | per order, turnover | — | none (generic assumption) | Common discount-broker structure, not verified |
+| STT — delivery (buy & sell) | VERIFIED | 0.1% | turnover, each leg | current | NSE, "SEBI Turnover Fees, STT and Other levies" (updated 17/04/2026) | STATUTORY |
+| STT — intraday sell | VERIFIED | 0.025% | turnover, sell leg only | current | same as above | STATUTORY; buy leg is 0 |
+| Exchange transaction charge | VERIFIED (NSE-specific) | 0.00307% (₹307/crore) | turnover, each side | 2026-03-01 | NSE circular NSE/FA/73061 (27 Feb 2026) | EXCHANGE; total outflow incl. NSE IPFT contribution; BSE differs |
+| SEBI turnover fee | VERIFIED | 0.0001% (₹10/crore) | turnover | current | NSE (updated 17/04/2026) | REGULATORY |
+| GST — rate | VERIFIED | 18% | — | current | NSE (updated 17/04/2026) | REGULATORY |
+| GST — base | CONFIGURABLE-BUT-STANDARD | brokerage + exchange_txn + sebi_charges | — | — | industry contract-note convention | Not itemised by the primary source itself; STT/stamp duty excluded as non-supply levies |
+| Stamp duty — delivery (buy only) | VERIFIED | 0.015% | turnover, buy leg only | current (since 1 Jul 2020) | NSE, "Stamp Duty" (updated 03/10/2023) | STATUTORY |
+| Stamp duty — intraday (buy only) | VERIFIED | 0.003% | turnover, buy leg only | current (since 1 Jul 2020) | same as above | STATUTORY |
+
+Full excerpts, URLs, and the verification methodology are in
+`docs/cost-rate-verification.md`.
+
+**What "VERIFIED" means here, precisely** (per this project's evidence
+discipline): the rate, its calculation base, its effective date, and its
+authoritative source were each independently confirmed against an official
+NSE or regulatory page/circular on the verification date above — not
+inferred from a secondary/broker/blog source. **Brokerage is deliberately
+never marked VERIFIED**: it is not a statutory rate, and no single named
+broker's dated, official rate card was checked against it, so it remains an
+explicit, swappable configuration assumption (Slice 4.5B §6).
+
+**What this means practically:** `india-equity-v2-2026-03-verified` is now
+the schedule to use for TR-2/PR-6/PR-9-relevant work going forward. The
+GST-base line above is the one place this schedule states an assumption
+(standard industry practice) rather than an itemised primary-source rule —
+noted so it isn't mistaken for a fully independent verification.
 
 ## Rounding policy
 
@@ -157,17 +163,18 @@ directly by `TestIndependence`.
 
 ## Limitations (current, explicit)
 
-- Rate table is unverified against a primary source (see Provenance above)
-  — the single most important open item.
-- Brokerage is modeled generically (a configurable flat/percentage
-  structure), not against any specific broker's actual, current published
-  rate card — broker-specific schedules are explicitly deferred to a
-  future integration/configuration layer (Stage 3 §8, unchanged).
-- Slippage / market-impact estimation (Stage 1 DR-5, PR-7) is out of scope
-  for this component entirely — the Cost Model computes statutory and
-  brokerage charges only, not price-impact cost.
-- Stamp duty and STT rates modeled here reflect the commonly-cited
-  post-2020/post-2023 structure; if the operator's actual trading period
-  predates or postdates a rate change not reflected here, this schedule
-  would need a new version rather than a correction to v1 (per the
-  no-silent-edit rule).
+- Brokerage remains a generic, unverified configuration assumption in both
+  schedule versions — broker-specific schedules are explicitly deferred to
+  a future integration/configuration layer (Stage 3 §8, unchanged).
+- The exchange transaction charge is NSE-specific (NSE/FA/73061); BSE
+  publishes its own cash-market rate separately, which this project has
+  not verified — a BSE-routed order would need its own schedule or
+  exchange-aware CostInputs dimension (a model gap, not fixed here per
+  Slice 4.5B §18's "no silent model expansion" instruction).
+- The GST *base* (which components GST applies to) follows standard
+  industry contract-note practice, not an itemised primary-source rule —
+  see the table above.
+- Slippage / market-impact estimation (Stage 1 DR-5, PR-7) remains out of
+  scope for this component entirely.
+- `india-equity-v1-unverified` is preserved, still selectable, and still
+  genuinely unverified — it is not "upgraded" by V2's existence.
