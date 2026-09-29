@@ -50,9 +50,7 @@ def _parse_observation_datetime(raw_date: str) -> datetime:
     return datetime(parsed_date.year, parsed_date.month, parsed_date.day, 10, 0, 0, tzinfo=UTC)
 
 
-def normalize_records(
-    raw_records: list[dict], ingestion_time: datetime
-) -> AlternateNormalizationResult:
+def normalize_records(raw_records: list[dict], ingestion_time: datetime) -> AlternateNormalizationResult:
     """Validate and normalize a batch of raw adapter records into
     canonical MarketData, per the Stage 3 §5 pipeline:
     validation -> normalization -> canonical MarketData.
