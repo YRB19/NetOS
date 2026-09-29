@@ -60,7 +60,9 @@ class TestFeatureToTier1(unittest.TestCase):
 
     def _cycle(self, universe, previous, extra_ids=()):
         snaps = build_feature_snapshots(
-            self.records, universe, self.as_of,
+            self.records,
+            universe,
+            self.as_of,
             instrument_ids=set(universe.instrument_ids) | set(extra_ids),
         )
         return snaps, self.strategy.generate_candidate_trades(snaps, universe, previous)
@@ -112,8 +114,20 @@ class TestFeatureToTier1(unittest.TestCase):
 
 
 class TestCostModelIndependence(unittest.TestCase):
-    FORBIDDEN = ("risk_execution", "intelligence", "research", "governance", "observability",
-                 "data", "socket", "http", "urllib", "requests", "ssl", "asyncio")
+    FORBIDDEN = (
+        "risk_execution",
+        "intelligence",
+        "research",
+        "governance",
+        "observability",
+        "data",
+        "socket",
+        "http",
+        "urllib",
+        "requests",
+        "ssl",
+        "asyncio",
+    )
 
     def test_cost_model_source_imports_are_pure(self):
         for path in (ROOT / "shared/costs").glob("*.py"):
@@ -170,14 +184,12 @@ class TestFullChainAndDeterminism(unittest.TestCase):
         self.assertEqual(a[2], b[2])
         self.assertEqual(a[3], b[3])
         self.assertEqual(a[4], b[4])
-        self.assertEqual(
-            [to_serializable(c) for c in a[3]], [to_serializable(c) for c in b[3]]
-        )
+        self.assertEqual([to_serializable(c) for c in a[3]], [to_serializable(c) for c in b[3]])
 
     def test_timestamps_are_utc(self):
         _, records, snaps, cands, _ = self._run()
         for obj in (*records, *cands):
-            ts = getattr(obj, "timestamp")
+            ts = obj.timestamp
             self.assertEqual(ts.utcoffset(), datetime.now(UTC).utcoffset())
         for s in snaps:
             self.assertEqual(s.decision_timestamp.utcoffset(), datetime.now(UTC).utcoffset())
@@ -191,8 +203,16 @@ class TestNoCompetingCoreDefinitions(unittest.TestCase):
 
     def test_no_duplicate_class_names_across_packages(self):
         seen: dict[str, list[str]] = {}
-        for pkg in ("domain", "data", "intelligence", "shared", "risk_execution", "research",
-                    "governance", "observability"):
+        for pkg in (
+            "domain",
+            "data",
+            "intelligence",
+            "shared",
+            "risk_execution",
+            "research",
+            "governance",
+            "observability",
+        ):
             for path in (ROOT / pkg).rglob("*.py"):
                 for node in ast.parse(path.read_text()).body:
                     if isinstance(node, ast.ClassDef):

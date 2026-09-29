@@ -538,8 +538,12 @@ class TestVerifiedScheduleV2HandCalculatedFixtures(unittest.TestCase):
         #   turnover = 2,500,000 * 0.00015 = Rs 375.00.
         self.assertEqual(est.stamp_duty, Decimal("375.00"))
         expected_total = (
-            Decimal("0.00") + Decimal("2500.00") + Decimal("76.75")
-            + Decimal("2.50") + Decimal("14.27") + Decimal("375.00")
+            Decimal("0.00")
+            + Decimal("2500.00")
+            + Decimal("76.75")
+            + Decimal("2.50")
+            + Decimal("14.27")
+            + Decimal("375.00")
         )
         self.assertEqual(est.total_cost, expected_total)
         self.assertEqual(est.total_cost, est.component_total())
@@ -573,7 +577,6 @@ class TestVerifiedScheduleV2HandCalculatedFixtures(unittest.TestCase):
                 schedule_version=SCHEDULE_V2,
             )
         )
-        turnover = Decimal("1000000.00")
         # STT intraday sell (verified): 0.025% of turnover = Rs 250.00.
         self.assertEqual(est.stt, Decimal("250.00"))
         # Exchange charge (verified): 1,000,000 * 0.0000307 = Rs 30.70.
