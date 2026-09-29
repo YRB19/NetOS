@@ -4,7 +4,8 @@ Shared, broker-independent, strategy-independent India-equity Cost Model.
 Public API:
     CostInputs, CostEstimate, TransactionSide, TradeType   (models)
     IndiaEquityCostSchedule, ScheduleRegistry, default_registry,
-    INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED                    (schedule)
+    INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED,
+    INDIA_EQUITY_SCHEDULE_V2_VERIFIED                      (schedule)
     CostModel                                              (calculator)
 
 See docs/cost-model.md for the full contract, rate provenance, and
@@ -15,6 +16,7 @@ from .calculator import CostModel
 from .models import CostEstimate, CostInputs, TradeType, TransactionSide
 from .schedule import (
     INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED,
+    INDIA_EQUITY_SCHEDULE_V2_VERIFIED,
     IndiaEquityCostSchedule,
     ScheduleRegistry,
     default_registry,
@@ -30,4 +32,5 @@ __all__ = [
     "ScheduleRegistry",
     "default_registry",
     "INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED",
+    "INDIA_EQUITY_SCHEDULE_V2_VERIFIED",
 ]
