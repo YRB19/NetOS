@@ -13,6 +13,7 @@ from pathlib import Path
 
 from shared.costs import (
     INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED,
+    INDIA_EQUITY_SCHEDULE_V2_VERIFIED,
     CostEstimate,
     CostInputs,
     CostModel,
@@ -20,9 +21,11 @@ from shared.costs import (
     ScheduleRegistry,
     TradeType,
     TransactionSide,
+    default_registry,
 )
 
 SCHEDULE_V1 = INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED.version_id
+SCHEDULE_V2 = INDIA_EQUITY_SCHEDULE_V2_VERIFIED.version_id
 
 
 def make_inputs(**overrides):
@@ -485,6 +488,212 @@ class TestRoundTrip(unittest.TestCase):
             schedule_notes=est.schedule_notes,
         )
         self.assertEqual(est, rebuilt)
+
+
+# ---------------------------------------------------------------------------
+# Slice 4.5B — primary-source-verified schedule (india-equity-v2-2026-03-verified)
+# ---------------------------------------------------------------------------
+
+
+class TestVerifiedScheduleV2HandCalculatedFixtures(unittest.TestCase):
+    """Exact-Decimal fixtures for the Slice 4.5B verified schedule.
+
+    Each expected component is hand-derived from the primary-source rate
+    (see docs/cost-rate-verification.md), independent of the calculator's
+    own code, so these tests would catch a wrong-base or wrong-unit bug the
+    calculator itself couldn't self-check.
+    """
+
+    def test_schedule_is_marked_verified(self):
+        self.assertTrue(INDIA_EQUITY_SCHEDULE_V2_VERIFIED.verified)
+        self.assertEqual(INDIA_EQUITY_SCHEDULE_V2_VERIFIED.effective_date, "2026-03-01")
+
+    def test_delivery_buy_large_turnover(self):
+        # 10,000 shares @ Rs 250.00 = Rs 25,00,000 turnover (Rs 25 lakh).
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.BUY,
+                trade_type=TradeType.DELIVERY,
+                quantity=10_000,
+                price=Decimal("250.00"),
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        turnover = Decimal("2500000.00")
+        self.assertEqual(est.gross_turnover, turnover)
+        # Brokerage: delivery flat = 0 (unverified assumption, unchanged).
+        self.assertEqual(est.brokerage, Decimal("0.00"))
+        # STT (statutory, verified): 0.1% of turnover = Rs 2500.00.
+        self.assertEqual(est.stt, Decimal("2500.00"))
+        # Exchange charges (verified, NSE/FA/73061): turnover * 0.0000307
+        #   = 2,500,000 * 0.0000307 = Rs 76.75.
+        self.assertEqual(est.exchange_txn_charges, Decimal("76.75"))
+        # SEBI turnover fee (verified): turnover * 0.000001 = Rs 2.50.
+        self.assertEqual(est.sebi_charges, Decimal("2.50"))
+        # GST (verified rate, standard base): 18% of (0 + 76.75 + 2.50)
+        #   = 18% of 79.25 = Rs 14.265 -> rounds to Rs 14.27 (HALF_UP).
+        self.assertEqual(est.gst, Decimal("14.27"))
+        # Stamp duty (statutory, verified), buy + delivery: 0.015% of
+        #   turnover = 2,500,000 * 0.00015 = Rs 375.00.
+        self.assertEqual(est.stamp_duty, Decimal("375.00"))
+        expected_total = (
+            Decimal("0.00") + Decimal("2500.00") + Decimal("76.75")
+            + Decimal("2.50") + Decimal("14.27") + Decimal("375.00")
+        )
+        self.assertEqual(est.total_cost, expected_total)
+        self.assertEqual(est.total_cost, est.component_total())
+
+    def test_delivery_sell_no_stamp_duty_verified_schedule(self):
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.SELL,
+                trade_type=TradeType.DELIVERY,
+                quantity=10_000,
+                price=Decimal("250.00"),
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        # STT still charged on the sell leg for delivery (verified: both
+        # legs taxed at the same 0.1% rate).
+        self.assertEqual(est.stt, Decimal("2500.00"))
+        # Stamp duty is buy-leg-only (verified): zero on a sell.
+        self.assertEqual(est.stamp_duty, Decimal("0.00"))
+
+    def test_intraday_sell_stt_and_exchange_charge(self):
+        # 1,000 shares @ Rs 1,000.00 = Rs 10,00,000 turnover (Rs 10 lakh).
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.SELL,
+                trade_type=TradeType.INTRADAY,
+                quantity=1_000,
+                price=Decimal("1000.00"),
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        turnover = Decimal("1000000.00")
+        # STT intraday sell (verified): 0.025% of turnover = Rs 250.00.
+        self.assertEqual(est.stt, Decimal("250.00"))
+        # Exchange charge (verified): 1,000,000 * 0.0000307 = Rs 30.70.
+        self.assertEqual(est.exchange_txn_charges, Decimal("30.70"))
+        # SEBI charge (verified): 1,000,000 * 0.000001 = Rs 1.00.
+        self.assertEqual(est.sebi_charges, Decimal("1.00"))
+        # Stamp duty is buy-leg-only: zero on a sell.
+        self.assertEqual(est.stamp_duty, Decimal("0.00"))
+
+    def test_intraday_buy_stamp_duty_and_no_stt(self):
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.BUY,
+                trade_type=TradeType.INTRADAY,
+                quantity=1_000,
+                price=Decimal("1000.00"),
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        # STT: intraday buy leg is explicitly zero (verified).
+        self.assertEqual(est.stt, Decimal("0.00"))
+        # Stamp duty intraday buy (verified): 0.003% of 1,000,000 = Rs 30.00.
+        self.assertEqual(est.stamp_duty, Decimal("30.00"))
+
+    def test_sebi_turnover_fee_unit_conversion_rs_10_per_crore(self):
+        """SEBI's rate is published as 'Rs.10 per crore' -- this test proves
+        the schedule's fractional constant is the correct crore-to-fraction
+        conversion (10 / 1,00,00,000), not an accidental lakh- or
+        per-thousand-based conversion (Slice 4.5B §9's required test)."""
+        one_crore = Decimal("10000000.00")  # Rs 1,00,00,000
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.BUY,
+                trade_type=TradeType.DELIVERY,
+                quantity=1,
+                price=one_crore,
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        self.assertEqual(est.sebi_charges, Decimal("10.00"))
+
+    def test_exchange_charge_unit_conversion_rs_307_per_crore(self):
+        """NSE/FA/73061 publishes Rs 307 per crore of traded value (each
+        side); confirm the schedule's fractional constant reproduces that
+        exact figure at exactly one crore of turnover."""
+        one_crore = Decimal("10000000.00")
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.BUY,
+                trade_type=TradeType.DELIVERY,
+                quantity=1,
+                price=one_crore,
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        self.assertEqual(est.exchange_txn_charges, Decimal("307.00"))
+
+    def test_small_turnover_verified_schedule(self):
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.BUY,
+                trade_type=TradeType.DELIVERY,
+                quantity=1,
+                price=Decimal("10.00"),
+                schedule_version=SCHEDULE_V2,
+            )
+        )
+        self.assertEqual(est.gross_turnover, Decimal("10.00"))
+        self.assertEqual(est.total_cost, est.component_total())
+
+
+class TestHistoricalScheduleReproducibility(unittest.TestCase):
+    """Slice 4.5B §17: the old unverified schedule must remain selectable,
+    unchanged, and must not be silently affected by the new schedule."""
+
+    def test_v1_still_selectable_by_version_id(self):
+        model = CostModel()
+        est = model.estimate(make_inputs(schedule_version=SCHEDULE_V1))
+        self.assertEqual(est.schedule_version, SCHEDULE_V1)
+
+    def test_v1_rates_unchanged_by_v2_introduction(self):
+        # Same fixture as TestCostCalculation.test_delivery_buy_basic would
+        # use, evaluated explicitly against V1 to prove V1's numbers did not
+        # drift when V2 was added.
+        model = CostModel()
+        est = model.estimate(
+            make_inputs(
+                side=TransactionSide.BUY,
+                trade_type=TradeType.DELIVERY,
+                quantity=10_000,
+                price=Decimal("250.00"),
+                schedule_version=SCHEDULE_V1,
+            )
+        )
+        # V1's pre-verification exchange rate (Rs 297/crore), NOT V2's Rs 307.
+        self.assertEqual(est.exchange_txn_charges, Decimal("74.25"))
+        self.assertFalse(INDIA_EQUITY_SCHEDULE_V1_UNVERIFIED.verified)
+
+    def test_v1_and_v2_both_present_in_default_registry(self):
+        registry = default_registry()
+        self.assertIn(SCHEDULE_V1, registry)
+        self.assertIn(SCHEDULE_V2, registry)
+
+    def test_v1_and_v2_give_different_totals_for_identical_inputs(self):
+        model = CostModel()
+        base = dict(
+            side=TransactionSide.BUY,
+            trade_type=TradeType.DELIVERY,
+            quantity=10_000,
+            price=Decimal("250.00"),
+        )
+        est_v1 = model.estimate(make_inputs(**base, schedule_version=SCHEDULE_V1))
+        est_v2 = model.estimate(make_inputs(**base, schedule_version=SCHEDULE_V2))
+        self.assertNotEqual(est_v1.total_cost, est_v2.total_cost)
+        self.assertEqual(est_v1.schedule_version, SCHEDULE_V1)
+        self.assertEqual(est_v2.schedule_version, SCHEDULE_V2)
 
 
 if __name__ == "__main__":
