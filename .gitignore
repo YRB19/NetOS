@@ -11,3 +11,4 @@ dist/
 *.egg
 .coverage
 htmlcov/
+.DS_Store
