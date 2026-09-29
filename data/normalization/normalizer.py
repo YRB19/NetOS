@@ -20,7 +20,7 @@ from shared.time.clock import UTC
 from shared.versioning.versioning import make_version_id
 
 
-class NormalizationResult:
+class AlternateNormalizationResult:
     """Outcome of normalizing a batch of raw records. Both accepted
     MarketData and rejected raw records (with reasons) are kept — SF-1
     gaps must be auditable, not silently dropped (Slice 3 spec §7 / §5)."""
@@ -50,7 +50,9 @@ def _parse_observation_datetime(raw_date: str) -> datetime:
     return datetime(parsed_date.year, parsed_date.month, parsed_date.day, 10, 0, 0, tzinfo=UTC)
 
 
-def normalize_records(raw_records: list[dict], ingestion_time: datetime) -> NormalizationResult:
+def normalize_records(
+    raw_records: list[dict], ingestion_time: datetime
+) -> AlternateNormalizationResult:
     """Validate and normalize a batch of raw adapter records into
     canonical MarketData, per the Stage 3 §5 pipeline:
     validation -> normalization -> canonical MarketData.
@@ -58,7 +60,7 @@ def normalize_records(raw_records: list[dict], ingestion_time: datetime) -> Norm
     if ingestion_time.tzinfo is None:
         raise ValueError("ingestion_time must be timezone-aware UTC")
 
-    result = NormalizationResult()
+    result = AlternateNormalizationResult()
     for raw in raw_records:
         errors = validate_raw_record(raw)
         if errors:
