@@ -14,3 +14,9 @@ incompatible with every earlier slice and has been narrowed accordingly.
 The architecture checker combines all remaining slice restrictions, plus cycle
 checks. Both historical script entry points delegate to it. Historical dependency
 reports are preserved under `history/slice*/dependency-decisions.md`.
+
+## Slice 4.5A
+No dependency added or changed. Runtime stays stdlib-only. pytest was needed only to run 3
+fixture-based tests; it was borrowed from the uploaded venv's pure-Python packages via
+PYTHONPATH for verification, not added to the project. Renamed
+`normalizer.NormalizationResult` -> `AlternateNormalizationResult` (internal only).

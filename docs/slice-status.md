@@ -1,14 +1,16 @@
 # Cumulative slice status
 
-Slices 1–4 have been integrated. Slice 5 has NOT been started.
+Slice 5 has NOT been started. Distinction used below: **historically reported** = a past
+session's claim; **verified now** = executed in the Slice 4.5A session on this tree.
 
-| Slice | Included behavior |
-| --- | --- |
-| 0–1 | Package scaffold, architecture checks, full domain contracts, serialization and order transitions |
-| 2 | Historical CSV ingestion, raw and canonical validation, split adjustments, JSONL and provenance |
-| 3 | Versioned universe, feature snapshots, missing/stale handling, deterministic Tier-1 proposals |
-| 4 | Decimal costs, explicit schedule registry, component rounding and cost tests |
+| Slice | Historically reported | Verified now (4.5A) | Origin |
+| --- | --- | --- | --- |
+| 0 | complete | arch check: 0 violations | restored |
+| 1 | 112 tests | domain surface complete (Stage 3 §2) | restored |
+| 2 | 116 tests | pipeline + persistence tests pass | restored |
+| 3 | 81 tests | context + Tier-1 tests pass | restored |
+| 4 | 43 tests | cost tests pass; schedule still unverified | restored |
+| 4.5A | n/a | 369 passed (pytest); 366 (unittest, 3 need pytest fixtures); 14 new integration/guard tests; 0 violations | verification + minimal fix |
 
-See `slice-1-4-reconciliation.md` for contract resolutions, regression results,
-and limitations. Original session reports are preserved under `history/slice1/`
-through `history/slice4/`; those describe historical standalone states, not this tree.
+Cost schedule `india-equity-v1-unverified` remains `verified=False`.
+See `repository-integration.md`. Historical reports: `history/slice1..4/`.
