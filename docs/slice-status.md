@@ -1,6 +1,18 @@
 # Cumulative slice status
 
-Slice 5 has NOT been started. Distinction used below: **historically reported** = a past
+## Slice 5 — Research harness core (complete; see `research-harness.md`, `research-protocol.md`)
+
+Deterministic offline replay of canonical `MarketData` → `FeatureSnapshot` → strategy →
+`CandidateTrade` → NEXT_BAR_OPEN simulated fill → shared Cost Model → research portfolio →
+metrics, with deterministic experiment/run identity, strict split + basic contamination
+guards (fail-closed), failures persisted as first-class artifacts, file-based artifacts,
+and apples-to-apples baseline comparison. **Not** implemented (out of scope): PBO/CSCV,
+regime segmentation, Sharpe-family metrics, Tier-2, LLM, risk engine, brokers, paper trading.
+A passing run is infrastructure verification only — not evidence of profitability.
+Tests: 378 → 471 (unittest), +93 (41 unit, 18 lookahead/isolation adversarial, 25
+fault-injection, 9 e2e integration).
+
+Distinction used below: **historically reported** = a past
 session's claim; **verified now** = executed in the Slice 4.5A session on this tree.
 
 | Slice | Historically reported | Verified now (4.5A) | Origin |
@@ -12,6 +24,7 @@ session's claim; **verified now** = executed in the Slice 4.5A session on this t
 | 4 | 43 tests | cost tests pass; schedule still unverified | restored |
 | 4.5A | n/a | 369 passed (pytest); 366 (unittest, 3 need pytest fixtures); 14 new integration/guard tests; 0 violations | verification + minimal fix |
 | 4.5B | n/a | 381 passed (pytest); 378 (unittest); +12 new tests; 0 violations | primary-source rate verification |
+| 5 | n/a | 471 passed (unittest, 93 new) + 3 pytest-fixture tests run manually (pytest unavailable); 0 violations | research harness core |
 
 Cost schedule `india-equity-v1-unverified` remains `verified=False`, preserved unchanged
 for reproducibility.

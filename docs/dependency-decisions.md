@@ -20,3 +20,9 @@ No dependency added or changed. Runtime stays stdlib-only. pytest was needed onl
 fixture-based tests; it was borrowed from the uploaded venv's pure-Python packages via
 PYTHONPATH for verification, not added to the project. Renamed
 `normalizer.NormalizationResult` -> `AlternateNormalizationResult` (internal only).
+
+## Slice 5
+No dependency added or changed; runtime stays stdlib-only (`decimal`, `json`, `bisect`,
+`dataclasses`). The research tree is statically checked to import no broker SDK and no
+network library (`tests/adversarial/test_research_lookahead.py`). pytest remains unavailable
+in this sandbox; new tests are `unittest.TestCase` so they run under both runners.

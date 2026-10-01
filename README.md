@@ -46,7 +46,11 @@ The original Stage 0–3 specifications remain in `docs/`.
 
 ## Scope
 
-Slice 5 has NOT been started. There is no live execution, broker connection,
-risk engine, research harness, momentum strategy, LLM or self-improvement loop.
-The included cost schedule is explicitly unverified; its original provenance
-and status are retained in `docs/cost-model.md`.
+Slice 5 (research harness core) is complete: offline deterministic replay, simulated
+research accounting, cost integration, contamination guards and file-based artifacts
+(`docs/research-harness.md`, `docs/research-protocol.md`). There is still no live execution,
+broker connection, risk engine, momentum strategy, LLM or self-improvement loop. A passing
+research run is infrastructure verification, not evidence of profitability.
+Cost schedule `india-equity-v1-unverified` remains unverified and preserved; the verified
+`india-equity-v2-2026-03-verified` (brokerage still an assumption) is documented in
+`docs/cost-model.md` and `docs/cost-rate-verification.md`.

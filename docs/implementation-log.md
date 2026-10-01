@@ -63,3 +63,28 @@ URLs, effective dates), `slice-status.md`, this log.
 standard industry practice, not itemised by the primary source itself; brokerage remains
 unverified in both schedule versions by design.
 **Next:** Slice 5 not started (out of scope for this slice).
+
+## Slice 5 — Research Harness Core
+**Start state:** repository as uploaded after Slice 4.5B (378 unittest tests passing, 0
+import-graph violations; 3 fixture-based tests need pytest, unavailable here).
+**Implemented:** `research/harness/` (config/identity, replay, runner, execution translation,
+portfolio, metrics, comparison, result, failures, jsonio), `research/contamination/guards.py`,
+`research/experiments/store.py`. Reused `Experiment`, `EvaluationRun`, `SplitSpec`,
+`ContaminationCheckResult`, `DecisionRecord`, `Fill`, `CandidateTrade`, `FeatureSnapshot`,
+`PermittedUniverse`, `CostModel`; no domain contract modified.
+**Key decisions:** (1) fills at the next bar's OPEN, consumed lazily when the loop reaches
+that bar, so no lookahead is possible by construction; (2) deterministic string identities
+(`exp_`/`run_` + hash), wall-clock excluded; (3) fail-closed defaults (FAIL_RUN on rejected
+orders; no forward-fill of held-position marks unless `carry_forward_marks`); (4) cost
+schedule required, never defaulted; future-effective schedule needs explicit acknowledgement;
+(5) `DecisionRecord` emitted for fills only — its enum cannot express HOLD-with-candidate or
+simulated rejections (documented, not changed); (6) `EvaluationRun.passed_pre_registered_criteria
+=False` means NOT ASSESSED (also `criteria_assessment` in result.json).
+**Tests:** +93 → 471 (unittest): 41 unit, 18 lookahead/isolation adversarial, 25
+fault-injection, 9 synthetic end-to-end. 3 pytest-fixture tests run manually: pass.
+**Defects found while testing:** none in prior slices; two harness/test bugs fixed during
+development (non-deterministic `Experiment.created_at` leaking into artifacts; a test helper
+treating an empty universe list as "use default").
+**Limitations:** see `research-harness.md` (ingestion_time not an availability gate, unliquidated
+mark-to-market, no PBO/CSCV/regimes, per-cycle O(N) snapshot-version hashing).
+**Next:** not started — Slice 6 (Tier-2 momentum / Risk Engine) per the Stage 3 sequence.
