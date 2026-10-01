@@ -6,18 +6,25 @@ reconstructable artifact — never a lost exception and never a 'successful' run
 
 import tempfile
 import unittest
-from datetime import timedelta
 from decimal import Decimal
 
 from domain.models.enums import Action
 from intelligence.baseline.tier1_equal_weight import Tier1EqualWeightBuyHold
 from research.experiments.store import read_run_summary, write_run
-from research.harness.config import EvaluationPeriod, OrderRejectionPolicy
+from research.harness.config import OrderRejectionPolicy
 from research.harness.failures import FailureCategory as FC
 from research.harness.failures import RunStatus
 from research.harness.runner import ResearchHarness
 from tests.unit._research_helpers import (
-    ISINS, V1, CallbackStrategy, ThresholdStrategy, _cand, bar, config, day, make_bars, universe,
+    ISINS,
+    V1,
+    CallbackStrategy,
+    _cand,
+    bar,
+    config,
+    day,
+    make_bars,
+    universe,
 )  # fmt: skip
 
 H = ResearchHarness()
@@ -72,7 +79,9 @@ class ConfigurationFaults(FailedRunContract):
     def test_intraday_not_supported(self):
         from shared.costs import TradeType
 
-        self.assertFailedClosed(run(config(trade_type=TradeType.INTRADAY)), FC.INVALID_CONFIGURATION)
+        self.assertFailedClosed(
+            run(config(trade_type=TradeType.INTRADAY)), FC.INVALID_CONFIGURATION
+        )
 
     def test_empty_universe_schedule(self):
         self.assertFailedClosed(run(uni=[]), FC.INVALID_CONFIGURATION)
@@ -94,7 +103,9 @@ class DataFaults(FailedRunContract):
         self.assertFailedClosed(run(data=data), FC.MISSING_DATA)
 
     def test_duplicate_data(self):
-        self.assertFailedClosed(run(data=make_bars() + [bar(ISINS[1], 3, 77.0, source="DUP")]), FC.DUPLICATE_DATA)
+        self.assertFailedClosed(
+            run(data=make_bars() + [bar(ISINS[1], 3, 77.0, source="DUP")]), FC.DUPLICATE_DATA
+        )
 
     def test_invalid_data_type(self):
         self.assertFailedClosed(run(data=make_bars() + ["not market data"]), FC.INVALID_DATA)
@@ -112,7 +123,13 @@ class DataFaults(FailedRunContract):
         self.assertFalse(a["snapshot_complete"])
         self.assertIsNone(a["reference_price"])
         # never forward-filled into a trade on day 0's data
-        self.assertFalse([t for t in r.trades if t["instrument_id"] == ISINS[0] and t["decision_timestamp"] == day(0)])
+        self.assertFalse(
+            [
+                t
+                for t in r.trades
+                if t["instrument_id"] == ISINS[0] and t["decision_timestamp"] == day(0)
+            ]
+        )
 
     def test_staleness_allowance_is_explicit_config(self):
         data = make_bars(skip={(ISINS[0], 0)})
@@ -132,7 +149,9 @@ class StrategyFaults(FailedRunContract):
 
     def test_non_list_and_non_candidate(self):
         self.assertFailedClosed(run(strat=CallbackStrategy(lambda *_: None)), FC.INVALID_CANDIDATE)
-        self.assertFailedClosed(run(strat=CallbackStrategy(lambda *_: ["junk"])), FC.INVALID_CANDIDATE)
+        self.assertFailedClosed(
+            run(strat=CallbackStrategy(lambda *_: ["junk"])), FC.INVALID_CANDIDATE
+        )
 
     def test_candidate_for_unknown_instrument_or_wrong_snapshot(self):
         def wrong_snap(snaps, u, p):
@@ -158,7 +177,12 @@ class StrategyFaults(FailedRunContract):
 
         # snapshots only cover the universe, so craft an out-of-universe BUY through a removed instrument
         u0, u1 = universe(), universe(ISINS[:2], effective=3)
-        r = run(strat=CallbackStrategy(buy_c), uni=[u0, u1], data=data, cfg=config(order_rejection_policy=CONT))
+        r = run(
+            strat=CallbackStrategy(buy_c),
+            uni=[u0, u1],
+            data=data,
+            cfg=config(order_rejection_policy=CONT),
+        )
         self.assertFailedClosed(r, FC.INVALID_CANDIDATE)
 
     def test_strategy_without_version_or_interface(self):
@@ -175,13 +199,22 @@ class AccountingFaults(FailedRunContract):
         for d in range(6):
             for i, isin in enumerate(ISINS):
                 c = 100.0 * (i + 1)
-                data.append(bar(isin, d, c * (1.25 if d >= 1 else 1.0), open_=c * (1.25 if d >= 1 else 1.0) - 0.0))
+                data.append(
+                    bar(
+                        isin,
+                        d,
+                        c * (1.25 if d >= 1 else 1.0),
+                        open_=c * (1.25 if d >= 1 else 1.0) - 0.0,
+                    )
+                )
         return data
 
     def test_insufficient_cash_fails_closed_by_default(self):
         r = run(config(split=self._split(5)), data=self.gap_up_data())
         self.assertFailedClosed(r, FC.INSUFFICIENT_CASH)
-        self.assertTrue(r.decisions, "partial decision context is preserved in the failure artifact")
+        self.assertTrue(
+            r.decisions, "partial decision context is preserved in the failure artifact"
+        )
 
     def test_reject_and_continue_records_rejections_and_completes(self):
         r = run(config(split=self._split(5), order_rejection_policy=CONT), data=self.gap_up_data())
@@ -211,9 +244,13 @@ class AccountingFaults(FailedRunContract):
         # BUY on day 1 for B must be rejected rather than double-booked.
         data = make_bars(skip={(ISINS[1], 1)})
         buy_all = CallbackStrategy(
-            lambda snaps, u, p: [_cand(s, Action.BUY, 0.3, "test_callback_strategy_v1") for s in snaps]
+            lambda snaps, u, p: [
+                _cand(s, Action.BUY, 0.3, "test_callback_strategy_v1") for s in snaps
+            ]
         )
-        r = run(config(order_rejection_policy=CONT, carry_forward_marks=True), strat=buy_all, data=data)
+        r = run(
+            config(order_rejection_policy=CONT, carry_forward_marks=True), strat=buy_all, data=data
+        )
         self.assertTrue(any(x["kind"] == "REJECTED_PENDING_ORDER_EXISTS" for x in r.rejections))
 
 

@@ -23,7 +23,9 @@ def day(n: int) -> datetime:
     return BASE + timedelta(days=n)
 
 
-def bar(isin: str, n: int, close: float, open_: float | None = None, source="SYNTHETIC") -> MarketData:
+def bar(
+    isin: str, n: int, close: float, open_: float | None = None, source="SYNTHETIC"
+) -> MarketData:
     o = close - 0.5 if open_ is None else open_
     hi, lo = max(o, close) + 1, min(o, close) - 1
     return MarketData(isin, day(n), o, hi, lo, close, 1000, source, BASE, "synthetic-v1")

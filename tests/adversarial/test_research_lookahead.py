@@ -7,14 +7,19 @@ from pathlib import Path
 from unittest import mock
 
 from data.features.universe import make_permitted_universe
-from domain.models.enums import Action
 from research.contamination import guards
 from research.harness.config import EvaluationPeriod, two_way_split
 from research.harness.failures import FailureCategory, ResearchRunFailure
 from research.harness.replay import HistoricalReplay
 from research.harness.runner import ResearchHarness
 from tests.unit._research_helpers import (
-    BASE, ISINS, ThresholdStrategy, bar, config, day, make_bars, universe,
+    ISINS,
+    ThresholdStrategy,
+    bar,
+    config,
+    day,
+    make_bars,
+    universe,
 )  # fmt: skip
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,7 +27,7 @@ H = ResearchHarness()
 
 
 def spike_price(spike_from: int, after: float):
-    return lambda i, d: (after if d >= spike_from else 100.0 * (i + 1) * 0.5)  # 50,100,150 early
+    return lambda i, d: after if d >= spike_from else 100.0 * (i + 1) * 0.5  # 50,100,150 early
 
 
 class LookaheadTests(unittest.TestCase):
@@ -64,7 +69,9 @@ class LookaheadTests(unittest.TestCase):
 
     def test_leaking_replay_is_caught_and_fails_the_run(self):
         data = make_bars(days=10)
-        with mock.patch.object(HistoricalReplay, "visible", lambda self, as_of: list(self._records)):
+        with mock.patch.object(
+            HistoricalReplay, "visible", lambda self, as_of: list(self._records)
+        ):
             r = H.run(config(), ThresholdStrategy(500.0), data, [universe()])
         self.assertEqual(r.failure.category, FailureCategory.CONTAMINATION)
         self.assertEqual(r.status.value, "FAILED")
@@ -86,7 +93,16 @@ class LookaheadTests(unittest.TestCase):
         u0 = universe(ISINS[:2])
         u1 = make_permitted_universe(list(ISINS), day(5))  # adds ISINS[2] on day 5
         strat = ThresholdStrategy(0.0)
-        r = H.run(config(order_rejection_policy=__import__("research.harness.config", fromlist=["x"]).OrderRejectionPolicy.REJECT_AND_CONTINUE), strat, make_bars(), [u1, u0])
+        r = H.run(
+            config(
+                order_rejection_policy=__import__(
+                    "research.harness.config", fromlist=["x"]
+                ).OrderRejectionPolicy.REJECT_AND_CONTINUE
+            ),
+            strat,
+            make_bars(),
+            [u1, u0],
+        )
         self.assertTrue(r.succeeded, r.failure)
         early = {s.instrument_id for s in strat.seen_snapshots if s.decision_timestamp < day(5)}
         self.assertNotIn(ISINS[2], early)
@@ -121,10 +137,16 @@ class LookaheadTests(unittest.TestCase):
         a = make_bars(days=10)
         b = make_bars(days=10) + [bar(ISINS[0], 12, 5000.0)]
         sa, sb = ThresholdStrategy(0.0), ThresholdStrategy(0.0)
-        cfg = config(order_rejection_policy=__import__("research.harness.config", fromlist=["x"]).OrderRejectionPolicy.REJECT_AND_CONTINUE)
+        cfg = config(
+            order_rejection_policy=__import__(
+                "research.harness.config", fromlist=["x"]
+            ).OrderRejectionPolicy.REJECT_AND_CONTINUE
+        )
         H.run(cfg, sa, a, [universe()])
         H.run(cfg, sb, b, [universe()])
-        self.assertEqual([s.snapshot_id for s in sa.seen_snapshots], [s.snapshot_id for s in sb.seen_snapshots])
+        self.assertEqual(
+            [s.snapshot_id for s in sa.seen_snapshots], [s.snapshot_id for s in sb.seen_snapshots]
+        )
 
 
 class SplitContaminationTests(unittest.TestCase):
@@ -143,21 +165,31 @@ class SplitContaminationTests(unittest.TestCase):
             two_way_split(day(-30), day(3), day(1), day(9))
 
     def test_oos_claim_void_if_strategy_configured_on_test_data(self):
-        r = H.run(config(strategy_configured_through=day(2)), ThresholdStrategy(0.0), make_bars(), [universe()])
+        r = H.run(
+            config(strategy_configured_through=day(2)),
+            ThresholdStrategy(0.0),
+            make_bars(),
+            [universe()],
+        )
         self.assertEqual(r.failure.category, FailureCategory.CONTAMINATION)
-        ok = H.run(config(strategy_configured_through=day(-1) - (day(0) - day(-1)) * 0), ThresholdStrategy(0.0),
-                   make_bars(), [universe()])  # configured through train_end -> fine but may fail on cash
+        ok = H.run(
+            config(strategy_configured_through=day(-1) - (day(0) - day(-1)) * 0),
+            ThresholdStrategy(0.0),
+            make_bars(),
+            [universe()],
+        )  # configured through train_end -> fine but may fail on cash
         self.assertNotEqual(getattr(ok.failure, "category", None), FailureCategory.CONTAMINATION)
 
     def test_undeclared_configuration_is_recorded_not_assumed(self):
-        from research.harness.config import OrderRejectionPolicy
 
         r = H.run(config(), ThresholdStrategy(500.0), make_bars(), [universe()])
         self.assertTrue(r.succeeded, r.failure)
         self.assertFalse(r.contamination_report["strategy_configuration_declared"])
 
     def test_in_sample_configured_after_train_end_fails(self):
-        cfg = config(evaluation_period=EvaluationPeriod.IN_SAMPLE, strategy_configured_through=day(5))
+        cfg = config(
+            evaluation_period=EvaluationPeriod.IN_SAMPLE, strategy_configured_through=day(5)
+        )
         data = [bar(i, d, 100.0) for d in range(-10, -1) for i in ISINS]
         data = [bar(i, d, 100.0) for d in range(-10, -1) for i in ISINS]
         r = H.run(cfg, ThresholdStrategy(500.0), data, [universe(effective=-10)])

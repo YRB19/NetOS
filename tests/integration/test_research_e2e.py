@@ -7,12 +7,13 @@ of trading performance, validated alpha, or readiness for any live use.
 import json
 import tempfile
 import unittest
-from decimal import Decimal
 
-from data.features.context_builder import build_feature_snapshots, compute_market_data_snapshot_version
+from data.features.context_builder import (
+    build_feature_snapshots,
+    compute_market_data_snapshot_version,
+)
 from domain.models.decision_record import DecisionRecord
 from domain.models.enums import TerminalState
-from domain.models.market_data import MarketData
 from intelligence.baseline.tier1_equal_weight import Tier1EqualWeightBuyHold
 from research.experiments.store import digest_of_run_dir, write_run
 from research.harness.comparison import run_with_baseline
@@ -20,7 +21,13 @@ from research.harness.config import OrderRejectionPolicy
 from research.harness.runner import ResearchHarness
 from shared.costs import CostInputs, CostModel, TradeType, TransactionSide
 from tests.unit._research_helpers import (
-    ISINS, V1, V2, ThresholdStrategy, config, day, make_bars, universe,
+    V1,
+    V2,
+    ThresholdStrategy,
+    config,
+    day,
+    make_bars,
+    universe,
 )  # fmt: skip
 
 H = ResearchHarness()
@@ -43,7 +50,11 @@ class SyntheticEndToEnd(unittest.TestCase):
         self.assertEqual(len(r.trades), 3)
         model = CostModel()
         for t in r.trades:
-            expect = model.estimate(CostInputs(TransactionSide.BUY, TradeType.DELIVERY, t["quantity"], t["fill_price"], V2))
+            expect = model.estimate(
+                CostInputs(
+                    TransactionSide.BUY, TradeType.DELIVERY, t["quantity"], t["fill_price"], V2
+                )
+            )
             self.assertEqual(t["cost_estimate"], expect)
             self.assertEqual(t["cost_estimate"].schedule_version, V2)
             ch = t["portfolio_change"]
@@ -94,12 +105,18 @@ class SyntheticEndToEnd(unittest.TestCase):
     def test_schedules_v1_v2_differ_only_by_costs(self):
         r1 = H.run(config(cost_schedule_version=V1), Tier1EqualWeightBuyHold(), self.data, self.uni)
         self.assertEqual(r1.cost_schedule_version, V1)
-        self.assertEqual([t["quantity"] for t in r1.trades], [t["quantity"] for t in self.result.trades])
-        self.assertNotEqual(r1.metrics["total_transaction_costs"], self.result.metrics["total_transaction_costs"])
+        self.assertEqual(
+            [t["quantity"] for t in r1.trades], [t["quantity"] for t in self.result.trades]
+        )
+        self.assertNotEqual(
+            r1.metrics["total_transaction_costs"], self.result.metrics["total_transaction_costs"]
+        )
 
     def test_baseline_comparison_uses_identical_inputs(self):
         cfg = config(order_rejection_policy=OrderRejectionPolicy.REJECT_AND_CONTINUE)
-        s, b, cmp = run_with_baseline(H, cfg, ThresholdStrategy(0.0), Tier1EqualWeightBuyHold(), self.data, self.uni)
+        s, b, cmp = run_with_baseline(
+            H, cfg, ThresholdStrategy(0.0), Tier1EqualWeightBuyHold(), self.data, self.uni
+        )
         self.assertIsNotNone(cmp)
         self.assertEqual(s.initial_capital, b.initial_capital)
         self.assertEqual(s.cost_schedule_version, b.cost_schedule_version)

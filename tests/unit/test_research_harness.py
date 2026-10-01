@@ -2,9 +2,7 @@
 
 import tempfile
 import unittest
-from datetime import timedelta
 from decimal import Decimal
-from pathlib import Path
 
 from intelligence.baseline.tier1_equal_weight import Tier1EqualWeightBuyHold
 from research.experiments.store import (
@@ -15,7 +13,7 @@ from research.experiments.store import (
     write_run,
 )
 from research.harness.comparison import ComparisonError, compare_runs, run_with_baseline
-from research.harness.config import EvaluationPeriod, OrderRejectionPolicy
+from research.harness.config import OrderRejectionPolicy
 from research.harness.execution import translate_candidate
 from research.harness.failures import FailureCategory, ResearchRunFailure, RunStatus
 from research.harness.metrics import compute_metrics
@@ -23,7 +21,15 @@ from research.harness.portfolio import ResearchPortfolio
 from research.harness.replay import HistoricalReplay
 from research.harness.runner import ResearchHarness
 from tests.unit._research_helpers import (
-    BASE, ISINS, V1, V2, ThresholdStrategy, bar, config, day, make_bars, universe,
+    ISINS,
+    V1,
+    V2,
+    ThresholdStrategy,
+    bar,
+    config,
+    day,
+    make_bars,
+    universe,
 )  # fmt: skip
 
 H = ResearchHarness()
@@ -140,8 +146,8 @@ class TranslationTests(unittest.TestCase):
         )[0]  # fmt: skip
 
     def test_integer_floor_and_residual_cash(self):
-        from tests.unit._research_helpers import _cand
         from domain.models.enums import Action
+        from tests.unit._research_helpers import _cand
 
         s = self._snap(333.0)
         c = _cand(s, Action.BUY, 1.0, "v")
@@ -150,31 +156,37 @@ class TranslationTests(unittest.TestCase):
         self.assertIsInstance(t.quantity, int)
 
     def test_buffer_reduces_quantity(self):
-        from tests.unit._research_helpers import _cand
         from domain.models.enums import Action
+        from tests.unit._research_helpers import _cand
 
         s = self._snap(100.0)
         c = _cand(s, Action.BUY, 1.0, "v")
-        self.assertEqual(translate_candidate(c, s, 0, Decimal("10000"), Decimal("0.01")).quantity, 99)
+        self.assertEqual(
+            translate_candidate(c, s, 0, Decimal("10000"), Decimal("0.01")).quantity, 99
+        )
 
     def test_hold_and_full_exit_and_nothing_held(self):
-        from tests.unit._research_helpers import _cand
         from domain.models.enums import Action
+        from tests.unit._research_helpers import _cand
 
         s = self._snap()
         self.assertEqual(translate_candidate(_cand(s, Action.HOLD, None, "v"), s, 5,
                                              Decimal("1000"), Decimal("0")).outcome, "HOLD")  # fmt: skip
         sell = _cand(s, Action.SELL, 0.0, "v")
         self.assertEqual(translate_candidate(sell, s, 7, Decimal("1000"), Decimal("0")).quantity, 7)
-        self.assertEqual(translate_candidate(sell, s, 0, Decimal("1000"), Decimal("0")).outcome, "NO_TRADE")
+        self.assertEqual(
+            translate_candidate(sell, s, 0, Decimal("1000"), Decimal("0")).outcome, "NO_TRADE"
+        )
 
     def test_buy_when_target_already_met_is_no_trade(self):
-        from tests.unit._research_helpers import _cand
         from domain.models.enums import Action
+        from tests.unit._research_helpers import _cand
 
         s = self._snap(100.0)
         c = _cand(s, Action.BUY, 0.5, "v")
-        self.assertEqual(translate_candidate(c, s, 50, Decimal("10000"), Decimal("0")).outcome, "NO_TRADE")
+        self.assertEqual(
+            translate_candidate(c, s, 50, Decimal("10000"), Decimal("0")).outcome, "NO_TRADE"
+        )
 
 
 class ReplayTests(unittest.TestCase):
@@ -225,7 +237,9 @@ class TradingAccountingTests(unittest.TestCase):
             self.assertEqual(t["decision_timestamp"], day(0))
             i = ISINS.index(t["instrument_id"])
             self.assertEqual(t["fill_price"], Decimal(str(100.0 * (i + 1) + 1 - 0.5)))
-        spent = sum(t["fill_price"] * t["quantity"] + t["cost_estimate"].total_cost for t in r.trades)
+        spent = sum(
+            t["fill_price"] * t["quantity"] + t["cost_estimate"].total_cost for t in r.trades
+        )
         self.assertEqual(r.equity_curve[-1]["cash"], Decimal("1000000") - spent)
         self.assertEqual(r.metrics["total_transaction_costs"],
                          sum(t["cost_estimate"].total_cost for t in r.trades).quantize(Decimal("0.01")))  # fmt: skip
@@ -244,7 +258,9 @@ class TradingAccountingTests(unittest.TestCase):
 
     def test_final_cycle_orders_are_unexecuted_not_failures(self):
         data = make_bars(days=1)
-        cfg = config(split=config().split.__class__(day(-30), day(-1), day(-1), day(-1), day(0), day(0)))
+        cfg = config(
+            split=config().split.__class__(day(-30), day(-1), day(-1), day(-1), day(0), day(0))
+        )
         r = run(cfg, data=data)
         self.assertTrue(r.succeeded, r.failure)
         self.assertEqual(len(r.trades), 0)
@@ -275,7 +291,9 @@ class ScheduleSelectionTests(unittest.TestCase):
         r1, r2 = run(config(cost_schedule_version=V1)), run(config(cost_schedule_version=V2))
         self.assertEqual((r1.cost_schedule_version, r2.cost_schedule_version), (V1, V2))
         self.assertTrue(r1.succeeded and r2.succeeded)
-        self.assertNotEqual(r1.metrics["total_transaction_costs"], r2.metrics["total_transaction_costs"])
+        self.assertNotEqual(
+            r1.metrics["total_transaction_costs"], r2.metrics["total_transaction_costs"]
+        )
         self.assertEqual(r1.config["cost_schedule_version"], V1)
 
     def test_unknown_schedule_fails_with_artifact(self):
@@ -287,7 +305,6 @@ class ScheduleSelectionTests(unittest.TestCase):
         early = config().split.__class__
         split = early(day(-400), day(-200), day(-199), day(-199), day(-198), day(-190))
         data = []
-        from datetime import timedelta as td
 
         for d in range(-198, -189):
             for i, isin in enumerate(ISINS):
@@ -306,11 +323,18 @@ class ScheduleSelectionTests(unittest.TestCase):
 class ComparisonTests(unittest.TestCase):
     def test_apples_to_apples(self):
         s, b, cmp = run_with_baseline(
-            H, config(order_rejection_policy=OrderRejectionPolicy.REJECT_AND_CONTINUE),
-            ThresholdStrategy(0.0), T1(), make_bars(), [universe()])
+            H,
+            config(order_rejection_policy=OrderRejectionPolicy.REJECT_AND_CONTINUE),
+            ThresholdStrategy(0.0),
+            T1(),
+            make_bars(),
+            [universe()],
+        )
         self.assertIsNotNone(cmp)
         self.assertEqual(s.comparison_fingerprint, b.comparison_fingerprint)
-        self.assertEqual(cmp.differences["final_equity"], s.metrics["final_equity"] - b.metrics["final_equity"])
+        self.assertEqual(
+            cmp.differences["final_equity"], s.metrics["final_equity"] - b.metrics["final_equity"]
+        )
         self.assertIn("NET_OF_TRANSACTION_COSTS", cmp.basis)
         self.assertEqual(cmp.to_dict()["statistical_significance"], "NOT_ASSESSED")
         self.assertEqual(s.baseline_strategy_version_ids, (T1.strategy_version_id,))
@@ -386,7 +410,9 @@ class MetricsTests(unittest.TestCase):
     def test_compute_metrics_identity(self):
         p = ResearchPortfolio(Decimal("1000"))
         p.buy("X", 5, Decimal("100"), Decimal("3"))
-        m = compute_metrics(p, {"X": Decimal("110")}, rejected_orders=0, unexecuted_orders=0, decision_cycles=1)
+        m = compute_metrics(
+            p, {"X": Decimal("110")}, rejected_orders=0, unexecuted_orders=0, decision_cycles=1
+        )
         self.assertEqual(m["net_pnl"], Decimal("47.00"))
         self.assertEqual(m["gross_pnl"], Decimal("50.00"))
         self.assertEqual(m["number_of_transactions"], 1)

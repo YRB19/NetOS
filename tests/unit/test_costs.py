@@ -577,6 +577,7 @@ class TestVerifiedScheduleV2HandCalculatedFixtures(unittest.TestCase):
                 schedule_version=SCHEDULE_V2,
             )
         )
+        turnover = Decimal("1000000.00")
         # STT intraday sell (verified): 0.025% of turnover = Rs 250.00.
         self.assertEqual(est.stt, Decimal("250.00"))
         # Exchange charge (verified): 1,000,000 * 0.0000307 = Rs 30.70.
