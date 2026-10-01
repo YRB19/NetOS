@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from domain.models.market_data import MarketData
 from data.features.universe import PermittedUniverse
+from domain.models.market_data import MarketData
 from research.harness.config import ResearchConfig
 from research.harness.failures import RunStatus
 from research.harness.result import ResearchRunResult

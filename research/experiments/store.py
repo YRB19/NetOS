@@ -116,7 +116,15 @@ def write_run(result: ResearchRunResult, root: Path | str) -> Path:
     meta = run_dir / "meta.json"
     if not meta.exists():
         meta.write_text(
-            dumps({"created_at": result.created_at, "experiment_created_at": result.experiment.created_at if result.experiment else None, "note": "non-deterministic metadata only"}),
+            dumps(
+                {
+                    "created_at": result.created_at,
+                    "experiment_created_at": result.experiment.created_at
+                    if result.experiment
+                    else None,
+                    "note": "non-deterministic metadata only",
+                }
+            ),
             encoding="utf-8",
         )
     return run_dir

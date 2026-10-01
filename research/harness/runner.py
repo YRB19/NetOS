@@ -322,7 +322,9 @@ class ResearchHarness:
             # 7-8. translate candidates into pending orders + record traces
             by_inst = {s.instrument_id: s for s in snapshots}
             pending_instruments = {p.instrument_id for p in pending}
-            for cand in sorted(candidates, key=lambda c: (c.action is not Action.SELL, c.instrument_id)):
+            for cand in sorted(
+                candidates, key=lambda c: (c.action is not Action.SELL, c.instrument_id)
+            ):
                 snap = by_inst[cand.instrument_id]
                 trace = self._new_trace(cand, snap, t, equity)
                 st.decisions.append(trace)
@@ -345,7 +347,10 @@ class ResearchHarness:
                     )  # fmt: skip
                     pending_instruments.add(cand.instrument_id)
                     trace.update(
-                        outcome="PENDING", order_id=oid, target_quantity=tr.quantity, side=tr.side.value
+                        outcome="PENDING",
+                        order_id=oid,
+                        target_quantity=tr.quantity,
+                        side=tr.side.value,
                     )
                 elif tr.outcome == "REJECTED_NO_REFERENCE_PRICE":
                     self._reject(trace, tr.outcome, tr.reason, config, st)
@@ -388,7 +393,11 @@ class ResearchHarness:
             decision_cycles=st.cycles,
         )
         report["checks_passed"].extend(
-            ["observations_not_from_future", "snapshots_not_from_future", "universe_not_from_future"]
+            [
+                "observations_not_from_future",
+                "snapshots_not_from_future",
+                "universe_not_from_future",
+            ]
         )
 
     def _invoke(self, strategy, snapshots, universe, prev_universe) -> list[CandidateTrade]:
@@ -529,7 +538,9 @@ class ResearchHarness:
             price = _dec(bar.open)
             side = TransactionSide.BUY if p.side is Action.BUY else TransactionSide.SELL
             estimate = self._cost_model.estimate(
-                CostInputs(side, TradeType.DELIVERY, p.quantity, price, config.cost_schedule_version)
+                CostInputs(
+                    side, TradeType.DELIVERY, p.quantity, price, config.cost_schedule_version
+                )
             )
             try:
                 if p.side is Action.BUY:
@@ -568,7 +579,9 @@ class ResearchHarness:
                     **fill_info,
                 }
             )
-            st.decision_records.append(self._decision_record(p, t, price, estimate, change, config, st))
+            st.decision_records.append(
+                self._decision_record(p, t, price, estimate, change, config, st)
+            )
 
     def _decision_record(self, p: PendingOrder, fill_ts, price, estimate, change, config, st):
         cand, snap = p.candidate, p.snapshot
@@ -623,7 +636,9 @@ class ResearchHarness:
             )
         except Exception:  # noqa: BLE001 - invalid configs may not satisfy Experiment's checks
             experiment = None
-        contamination_failed = failure is not None and failure.category is FailureCategory.CONTAMINATION
+        contamination_failed = (
+            failure is not None and failure.category is FailureCategory.CONTAMINATION
+        )
         if experiment is not None and (status is RunStatus.COMPLETED or contamination_failed):
             try:
                 check = (

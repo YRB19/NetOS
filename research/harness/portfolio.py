@@ -124,7 +124,9 @@ class ResearchPortfolio:
                 f"transaction cost must be a non-negative finite Decimal, got {cost!r}",
             )
 
-    def buy(self, instrument_id: str, quantity: int, price: Decimal, cost: Decimal) -> PortfolioChange:
+    def buy(
+        self, instrument_id: str, quantity: int, price: Decimal, cost: Decimal
+    ) -> PortfolioChange:
         self._check_qty_price(quantity, price, cost)
         turnover = Decimal(quantity) * price
         needed = turnover + cost
@@ -148,7 +150,9 @@ class ResearchPortfolio:
             before_cash, self.cash, before_qty, h.quantity, ZERO,
         )  # fmt: skip
 
-    def sell(self, instrument_id: str, quantity: int, price: Decimal, cost: Decimal) -> PortfolioChange:
+    def sell(
+        self, instrument_id: str, quantity: int, price: Decimal, cost: Decimal
+    ) -> PortfolioChange:
         self._check_qty_price(quantity, price, cost)
         held = self.quantity(instrument_id)
         if quantity > held:

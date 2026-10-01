@@ -145,7 +145,9 @@ def experiment_id_for(payload: dict) -> str:
 
 def run_id_for(experiment_id: str, harness_version: str = HARNESS_VERSION) -> str:
     """A run is one execution of an experiment by a given harness version."""
-    return "run_" + hash_json_stable({"experiment_id": experiment_id, "harness": harness_version})[:32]
+    return (
+        "run_" + hash_json_stable({"experiment_id": experiment_id, "harness": harness_version})[:32]
+    )
 
 
 _COMPARISON_CONFIG_KEYS = (
