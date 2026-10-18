@@ -66,6 +66,7 @@ KNOWN_TOP_LEVEL_PACKAGES = frozenset(
         "observability",
         "research",
         "shared",
+        "simulation",
     }
 )
 

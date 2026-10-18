@@ -37,6 +37,7 @@ packages = [
     "research", "research.harness", "research.contamination", "research.stats",
     "research.experiments", "research.promotion",
     "shared", "shared.versioning", "shared.time", "shared.config_loader", "shared.arch_lint", "shared.costs", "risk_execution.broker.adapters",
+    "simulation",
 ]
 
 [tool.pytest.ini_options]

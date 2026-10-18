@@ -33,6 +33,7 @@ FIRST_PARTY_TOP_LEVEL = {
     "research",
     "shared",
     "governance",
+    "simulation",
 }
 
 

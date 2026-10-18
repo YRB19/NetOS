@@ -168,3 +168,50 @@ RULES += tuple(
     for target in sorted(set(targets))
     if not any(r.source_package == source and r.forbidden_prefix == target for r in RULES)
 )
+
+
+# ---------------------------------------------------------------------------
+# Slice 6 additions — execution-safe research pipeline
+# ---------------------------------------------------------------------------
+# `simulation` is the offline orchestrator that wires
+#   strategy -> risk -> sizing -> simulated broker -> portfolio.
+# It exists as its own package because the Slice 5 rule `research -X-> risk_execution`
+# (Stage 2 §11/§16) must stay intact: the research environment itself may never
+# reach execution code, so the one component that legitimately touches both lives
+# outside both. Nothing may import it (it is a leaf), and it may not import any
+# concrete strategy or any data adapter: it is strategy-agnostic by construction.
+_S6 = "Slice 6 / Stage 3 §7-§10, §17, ADR-8: "
+
+
+def _r(src: str, forbidden: str, why: str) -> ForbiddenImportRule:
+    return ForbiddenImportRule(source_package=src, forbidden_prefix=forbidden, rationale=_S6 + why)
+
+
+_SLICE6_RULES: tuple[ForbiddenImportRule, ...] = (
+    # nobody may depend on the orchestrator (leaf package)
+    *(
+        _r(src, "simulation", "simulation is a leaf orchestrator; no plane may depend on it")
+        for src in (
+            "domain", "data", "intelligence", "risk_execution", "observability",
+            "research", "shared", "governance",
+        )
+    ),
+    # orchestrator is strategy-agnostic and adapter-free
+    _r("simulation", "intelligence.baseline", "runner must not know concrete strategies"),
+    _r("simulation", "intelligence.llm_component", "no LLM in the execution pipeline"),
+    _r("simulation", "data.adapters", "runner consumes canonical MarketData only"),
+    _r("simulation", "governance", "no governance access from the research pipeline"),
+    # Risk Engine independence (§15): no research, no orchestration, no adapters
+    _r("risk_execution", "research", "Plane 3 must not depend on the research environment"),
+    _r("risk_execution", "data.adapters", "Plane 3 must not touch data sources"),
+    _r("risk_execution.risk_engine", "risk_execution.sizing", "risk must not depend on sizing"),
+    _r("risk_execution.risk_engine", "risk_execution.broker", "risk must not depend on broker"),
+    # Sizing independence (§21)
+    _r("risk_execution.sizing", "risk_execution.broker", "sizing must not depend on broker"),
+    _r("risk_execution.sizing", "risk_execution.risk_engine", "sizing consumes a RiskDecision only"),
+    # Simulated broker independence (§38)
+    _r("risk_execution.broker", "risk_execution.risk_engine", "broker must not import risk logic"),
+    _r("risk_execution.broker", "risk_execution.sizing", "broker must not import sizing logic"),
+)
+
+RULES = RULES + _SLICE6_RULES

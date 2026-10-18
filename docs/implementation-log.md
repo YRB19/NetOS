@@ -88,3 +88,26 @@ treating an empty universe list as "use default").
 **Limitations:** see `research-harness.md` (ingestion_time not an availability gate, unliquidated
 mark-to-market, no PBO/CSCV/regimes, per-cycle O(N) snapshot-version hashing).
 **Next:** not started — Slice 6 (Tier-2 momentum / Risk Engine) per the Stage 3 sequence.
+
+## Slice 6 — Tier-2 momentum + Risk Engine + deterministic sizing + simulated broker
+**Start state (measured):** uploaded repo through Slice 5; 471 unittest tests OK; import checker 0 violations.
+**Built:** `data/features/{calendar,momentum,builders}.py`; `intelligence/baseline/tier2_momentum.py`;
+`risk_execution/risk_engine/{config,context,engine}.py`; `risk_execution/sizing/sizer.py`;
+`risk_execution/broker/{interface.py,adapters/simulated.py}`; `simulation/{config,runner,reconcile,result,artifacts}.py`;
+arch-lint rules for the new boundaries; three additive `FailureCategory` members.
+**Design decisions:** (1) `simulation/` leaf package keeps research isolated from execution (ADR-9);
+(2) `RiskDecision.approved_qty` on APPROVE is a quantity *ceiling*, sizing alone produces quantities/OrderRequests;
+(3) rebalance = first observation of a calendar month, computed from visible data only, carried in
+FeatureSnapshot features; (4) strategy version id embeds a hash of its full config; (5) risk config has no
+default thresholds; (6) drawdown halt latches in the runner and never self-clears; (7) `DecisionRecord` also
+emitted for risk vetoes (`REJECTED_AT_RISK`), broker rejections and reconciliation failures; (8) pipeline artifacts go
+in a `pipeline/` subdirectory so the Slice 5 store is untouched.
+**Defects found/fixed during development:** test fixture produced negative low prices; my first end-to-end test
+file overwrote the pre-existing Slice 5 `tests/integration/test_pipeline_e2e.py` (2 tests) — caught by comparing
+per-module counts against a pristine unzip; the Slice 5 file was restored and mine is
+`test_execution_pipeline_e2e.py`; `RiskConfig` initially capped gross exposure at 1.0 (relaxed to positive).
+Mid-session the sandbox was reset and the working tree was lost; it was rebuilt from the uploaded zip and
+re-verified (593 tests, 0 violations).
+**Tests:** 593 passed (471 + 122). Import checker: 0 violations.
+**Limitations:** see each doc; synthetic data only; NEXT_BAR_OPEN no-slippage fills; no regulatory approval implied.
+**Notion:** Slice 6 entry written and verified by re-fetching the page.
