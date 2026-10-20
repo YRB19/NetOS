@@ -10,6 +10,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
+from risk_execution.reconciliation import compare_cash_positions
+
 
 @dataclass(frozen=True)
 class ReconciliationResult:
@@ -27,12 +29,6 @@ def reconcile(
     broker_cash: Decimal,
     broker_positions: Mapping[str, int],
 ) -> ReconciliationResult:
-    mism: list[str] = []
-    if portfolio_cash != broker_cash:
-        mism.append(f"cash: portfolio {portfolio_cash} != broker {broker_cash}")
-    for i in sorted(set(portfolio_positions) | set(broker_positions)):
-        a, b = portfolio_positions.get(i, 0), broker_positions.get(i, 0)
-        if a != b:
-            mism.append(f"position {i}: portfolio {a} != broker {b}")
+    mism = compare_cash_positions(portfolio_cash, portfolio_positions, broker_cash, broker_positions)
     return ReconciliationResult(not mism, tuple(mism), portfolio_cash, broker_cash,
                                 dict(portfolio_positions), dict(broker_positions))  # fmt: skip
