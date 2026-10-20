@@ -57,6 +57,15 @@ from research.harness.runner import (
 )
 from risk_execution.broker.adapters.simulated import SimulatedBrokerAdapter
 from risk_execution.broker.interface import BrokerFillReport, OrderStatus
+from risk_execution.order_lifecycle import (
+    BrokerEvent,
+    EventKind,
+    EventStatus,
+    OrderLifecycleManager,
+    SubmitOutcome,
+    event_from_fill_report,
+)
+from risk_execution.reconciliation import LedgerView, reconcile_execution
 from risk_execution.risk_engine.context import PendingIntent, RiskContext
 from risk_execution.risk_engine.engine import RiskEngine
 from risk_execution.sizing.sizer import SizingDecision, SizingInputs, SizingOutcome, size_order
@@ -101,6 +110,7 @@ class _PState(_RunState):
         self.orders_submitted = 0
         self.no_op_candidates = 0
         self.skipped_pending = 0
+        self.lifecycle = None  # OrderLifecycleManager of the run (Slice 7), exposed for inspection
 
 
 class PipelineHarness(ResearchHarness):
@@ -226,6 +236,10 @@ class PipelineHarness(ResearchHarness):
         session = broker.authenticate()
         staleness = timedelta(days=config.max_staleness_days)
         live: dict[str, _Live] = {}
+        clock = {"t": cycles[0]}
+        mgr = OrderLifecycleManager(risk_version_id, lambda: clock["t"])  # Slice 7: lifecycle + halts
+        st.lifecycle = mgr
+        opening = LedgerView(capital, {})
         order_ts: list[datetime] = []
         prev_universe: PermittedUniverse | None = None
         peak = capital
@@ -236,8 +250,9 @@ class PipelineHarness(ResearchHarness):
             st.current_decision_ts = t
             st.cycles += 1
             broker.set_simulated_time(t)
+            clock["t"] = t
             self._settle_pipeline(t, replay, broker, session, live, portfolio, config, cfg_id,
-                                  risk_version_id, st, injector)  # fmt: skip
+                                  risk_version_id, st, injector, mgr, opening)  # fmt: skip
 
             visible = replay.visible(t)
             guards.check_observations_not_from_future(visible, t, w_end)
@@ -336,7 +351,16 @@ class PipelineHarness(ResearchHarness):
                     self._reject(trace, kind, sd.reason, config, st)
                     continue
 
-                status = broker.place_order(session, sd.order_request)
+                if mgr.halted:  # an unresolved execution state blocks every new submission; the halt
+                    # is surfaced as a run failure at the next settlement
+                    trace["outcome"] = "BLOCKED_EXECUTION_HALT"
+                    continue
+                sub = mgr.submit(sd.order_request, rd, broker, session)
+                if (sub.outcome not in (SubmitOutcome.ACCEPTED, SubmitOutcome.REJECTED_BY_BROKER)
+                        and sub.record.order.broker_order_id is None):  # outcome truly unknown: nothing to track
+                    raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
+                                             f"submission outcome {sub.outcome.value}: {sub.detail}")  # fmt: skip
+                status = broker.get_order_status(session, sub.record.order.broker_order_id)
                 st.orders_submitted += 1
                 order_ts.append(t)
                 lv = _Live(status.broker_order_id, status.order_id, sd.order_request, cand, snap,
@@ -368,6 +392,9 @@ class PipelineHarness(ResearchHarness):
             st.unexecuted += 1
             self._finalize(lv, status, cycles[-1], cfg_id, risk_version_id, st)
         live.clear()
+        if mgr.halted:
+            raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
+                                     "execution halted: " + "; ".join(mgr.can_submit()[1]))  # fmt: skip
         st.current_decision_ts = None
         st.metrics = compute_metrics(portfolio, last_marks, rejected_orders=st.rejected,
                                      unexecuted_orders=st.unexecuted, decision_cycles=st.cycles)  # fmt: skip
@@ -378,7 +405,7 @@ class PipelineHarness(ResearchHarness):
 
     # --------------------------------------------------------------- settle
     def _settle_pipeline(self, t, replay, broker, session, live, portfolio, config, cfg_id,
-                         risk_version_id, st, injector) -> None:  # noqa: ANN001
+                         risk_version_id, st, injector, mgr, opening) -> None:  # noqa: ANN001
         opens: dict[str, Decimal] = {}
         for lv in live.values():
             bar = replay.bar_at(lv.request.instrument_id, t)
@@ -388,6 +415,12 @@ class PipelineHarness(ResearchHarness):
         if injector is not None:
             injector(broker, t)
         for rep in reports:
+            res = mgr.apply_event(event_from_fill_report(rep))
+            if res.status is EventStatus.DUPLICATE_IGNORED:
+                continue  # already accounted: a re-delivered fill must never be booked twice
+            if res.status is not EventStatus.APPLIED:
+                raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
+                                         f"fill {rep.fill.fill_id} not applied: {res.status.value} {res.detail}")  # fmt: skip
             lv = live[rep.broker_order_id]
             price = _dec(rep.fill.price)
             qty = int(rep.fill.quantity)
@@ -395,6 +428,7 @@ class PipelineHarness(ResearchHarness):
                 change = portfolio.buy(lv.request.instrument_id, qty, price, rep.charges.total_cost)
             else:
                 change = portfolio.sell(lv.request.instrument_id, qty, price, rep.charges.total_cost)
+            mgr.mark_portfolio_applied(rep.fill.fill_id)
             lv.fills.append(rep)
             lv.pnl += change.realized_pnl_gross
             row = {
@@ -414,6 +448,7 @@ class PipelineHarness(ResearchHarness):
 
         for lv in list(live.values()):
             status = broker.get_order_status(session, lv.broker_order_id)
+            self._sync_terminal(mgr, lv, status)
             if status.state is OrderState.REJECTED:
                 self._on_broker_reject(lv, status, t, config, cfg_id, risk_version_id, st, live)
             elif status.state is OrderState.RECONCILIATION_REQUIRED:
@@ -435,6 +470,34 @@ class PipelineHarness(ResearchHarness):
         if not rec.ok:
             raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
                                      "portfolio/broker ledgers disagree: " + "; ".join(rec.mismatches))  # fmt: skip
+        # Slice 7: order/fill/position/cash reconciliation across lifecycle, internal books and broker
+        full = reconcile_execution(mgr, opening, LedgerView(portfolio.cash, pf_pos),
+                                   LedgerView(ledger["cash"], ledger["positions"]),
+                                   broker.order_statuses(session), broker.get_fills(session))
+        halt = mgr.record_reconciliation(full)
+        st.recon_rows[-1].update(execution_reconciliation={"run_id": full.run_id, "outcome": full.outcome.value,
+                                                           "mismatches": [str(m) for m in full.mismatches]})  # fmt: skip
+        if mgr.halted and full.consistent:
+            raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
+                                     "execution halted: " + "; ".join(mgr.can_submit()[1]))  # fmt: skip
+        if not full.consistent:
+            raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
+                                     f"execution reconciliation {full.outcome.value} (halt {halt.halt_id if halt else None}): "
+                                     + "; ".join(str(m) for m in full.mismatches))  # fmt: skip
+
+    @staticmethod
+    def _sync_terminal(mgr, lv, status: OrderStatus) -> None:  # noqa: ANN001
+        """Feed broker-side terminal outcomes to the lifecycle manager as ordinary (idempotent) events."""
+        rec = mgr.record(lv.request.idempotency_key)
+        if rec is None or rec.order.state is status.state:
+            return
+        kind = {OrderState.REJECTED: EventKind.REJECTED, OrderState.CANCELLED: EventKind.CANCEL_CONFIRMED}.get(status.state)
+        if kind is not None:
+            res = mgr.apply_event(BrokerEvent(kind, status.broker_order_id, lv.request.idempotency_key,
+                                              detail=status.last_response))
+            if res.status not in (EventStatus.APPLIED, EventStatus.DUPLICATE_IGNORED):
+                raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
+                                         f"{kind.value} for {lv.order_id} not applied: {res.status.value} {res.detail}")  # fmt: skip
 
     def _on_broker_reject(self, lv, status: OrderStatus, t, config, cfg_id, risk_version_id, st, live) -> None:  # noqa: ANN001
         lv.trace["outcome"] = "REJECTED_BY_BROKER"
