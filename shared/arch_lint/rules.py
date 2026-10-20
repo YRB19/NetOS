@@ -215,3 +215,33 @@ _SLICE6_RULES: tuple[ForbiddenImportRule, ...] = (
 )
 
 RULES = RULES + _SLICE6_RULES
+
+
+# ---------------------------------------------------------------------------
+# Slice 7 additions — order lifecycle & reconciliation (ADR-10)
+# ---------------------------------------------------------------------------
+# Lifecycle/reconciliation consume only domain objects and broker *interface* types. They can never
+# import risk logic or sizing (so they cannot manufacture approvals or OrderRequests), research,
+# the orchestrator, strategies or data adapters; and risk/sizing/broker may not depend on them.
+_S7 = "Slice 7 / ADR-10: "
+_SLICE7_RULES: tuple[ForbiddenImportRule, ...] = tuple(
+    ForbiddenImportRule(src, target, _S7 + why)
+    for src in ("risk_execution.order_lifecycle", "risk_execution.reconciliation")
+    for target, why in (
+        ("risk_execution.risk_engine", "must not manufacture approvals"),
+        ("risk_execution.sizing", "only sizing creates OrderRequests"),
+        ("research", "execution never depends on research"),
+        ("simulation", "orchestrator is a leaf"),
+        ("intelligence", "no strategy/LLM access"),
+        ("governance", "no governance access"),
+        ("data.adapters", "no data sources"),
+    )
+) + tuple(
+    ForbiddenImportRule(src, target, _S7 + "risk/sizing/broker stay independent of lifecycle bookkeeping")
+    for src in ("risk_execution.risk_engine", "risk_execution.sizing", "risk_execution.broker")
+    for target in ("risk_execution.order_lifecycle", "risk_execution.reconciliation")
+) + (
+    ForbiddenImportRule("risk_execution.order_lifecycle", "risk_execution.reconciliation",
+                        _S7 + "reconciliation reads the lifecycle, never the reverse"),
+)
+RULES = RULES + _SLICE7_RULES

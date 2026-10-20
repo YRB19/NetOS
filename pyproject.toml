@@ -33,6 +33,7 @@ packages = [
     "intelligence", "intelligence.baseline", "intelligence.llm_component", "intelligence.interface",
     "risk_execution", "risk_execution.cost_model", "risk_execution.risk_engine",
     "risk_execution.sizing", "risk_execution.order_state_machine", "risk_execution.broker",
+    "risk_execution.order_lifecycle", "risk_execution.reconciliation",
     "observability", "observability.decision_log", "observability.reconciliation", "observability.reporting",
     "research", "research.harness", "research.contamination", "research.stats",
     "research.experiments", "research.promotion",
