@@ -114,6 +114,7 @@ class SimulatedBrokerAdapter:
         self._now: datetime | None = None
         self._seq = 0
         self.duplicate_submissions = 0
+        self._faults: list[str] = []  # FAULT-INJECTION (tests only): one-shot place_order faults
 
     # ----------------------------------------------------------------- clock
     def set_simulated_time(self, ts: datetime) -> None:
@@ -173,6 +174,11 @@ class SimulatedBrokerAdapter:
         self._check(session)
         return self._status(self._get(broker_order_id))
 
+    def order_statuses(self, session: BrokerSession) -> dict[str, OrderStatus]:
+        """Every order the broker holds, keyed by broker_order_id (reconciliation aid, Slice 7)."""
+        self._check(session)
+        return {bid: self._status(bo) for bid, bo in self._orders.items()}
+
     def get_fills(self, session: BrokerSession, broker_order_id: str | None = None):
         self._check(session)
         if broker_order_id is not None:
@@ -185,6 +191,9 @@ class SimulatedBrokerAdapter:
         if not isinstance(request, OrderRequest):
             raise BrokerRequestError("place_order requires an OrderRequest")
         now = self._time()
+        fault = self._faults.pop(0) if self._faults else None
+        if fault == "FAIL_BEFORE_ACCEPT":  # connection lost before the broker saw the request
+            raise ConnectionError("simulated: connection lost before acceptance")
         existing = self._by_key.get(request.idempotency_key)
         if existing is not None:
             self.duplicate_submissions += 1
@@ -210,6 +219,8 @@ class SimulatedBrokerAdapter:
         else:
             order.last_broker_response = "ACKNOWLEDGED"
             order.transition_to(OrderState.ACKNOWLEDGED, at=now, detail="accepted")
+        if fault == "FAIL_AFTER_ACCEPT":  # broker accepted, but the caller never receives the response
+            raise TimeoutError("simulated: response lost after acceptance")
         return self._status(bo)
 
     @staticmethod
@@ -231,6 +242,18 @@ class SimulatedBrokerAdapter:
         # raises InvalidOrderTransition unless PARTIALLY_FILLED (existing state-machine contract)
         bo.order.transition_to(OrderState.CANCELLED, at=self._time(), detail="cancel requested")
         return self._status(bo)
+
+    def inject_fault(self, kind: str) -> None:
+        """FAULT-INJECTION HOOK (tests only): next place_order fails as FAIL_BEFORE_ACCEPT | FAIL_AFTER_ACCEPT."""
+        if kind not in ("FAIL_BEFORE_ACCEPT", "FAIL_AFTER_ACCEPT"):
+            raise ValueError(kind)
+        self._faults.append(kind)
+
+    def find_order_by_client_key(self, session: BrokerSession, idempotency_key: str) -> OrderStatus | None:
+        """Authoritative lookup by client order id (None = the broker never received it). Slice 7."""
+        self._check(session)
+        bid = self._by_key.get(idempotency_key)
+        return None if bid is None else self._status(self._orders[bid])
 
     def inject_ambiguous_response(self, broker_order_id: str, detail: str = "ambiguous") -> OrderStatus:
         """FAULT-INJECTION HOOK (tests only): force RECONCILIATION_REQUIRED."""
