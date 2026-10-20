@@ -111,3 +111,17 @@ re-verified (593 tests, 0 violations).
 **Tests:** 593 passed (471 + 122). Import checker: 0 violations.
 **Limitations:** see each doc; synthetic data only; NEXT_BAR_OPEN no-slippage fills; no regulatory approval implied.
 **Notion:** Slice 6 entry written and verified by re-fetching the page.
+
+## 2026-10-20 — Slice 7: order state machine & reconciliation hardening
+**Baseline (measured):** uploaded `NetOS.zip` checkout: 593 unittest tests OK, import checker 0 violations; Slices 0-6 present;
+`tests/integration/test_pipeline_e2e.py` (Slice 5) intact. pytest/ruff/mypy unavailable offline; stdlib `unittest` + `compileall` used.
+**Audit:** domain `Order` transition table printed and documented; `simulation/` is a valid leaf (ADR-9), unchanged; Slice 6 test
+asserts ACKNOWLEDGED->CANCELLED is invalid, so the contract was left as is and the gap recorded as an open decision.
+**Built:** `risk_execution/order_lifecycle/`, `risk_execution/reconciliation/`, ADR-10 rules, simulated-broker `find_order_by_client_key`
+/ `order_statuses` / `inject_fault`, runner integration (lifecycle manager, idempotent fill booking, per-cycle execution reconciliation,
+halt -> run failure). `simulation.reconcile` now delegates to the shared comparison (messages identical).
+**Defects found/fixed:** the Slice 6 "only sizing constructs OrderRequest" guard caught my first `restore()` (it built requests) ->
+restore now takes the caller's original requests; runner regression (RECON order row lost) fixed by only aborting at submit when the
+broker order id is unknown; halt now surfaces at the next settlement so live order rows are finalized first.
+**Tests:** 672 passed (593 + 79: lifecycle 44, reconciliation 18, architecture/safety 13, pipeline 4). Import checker: 0 violations.
+**Limitations:** see `order-state-machine-reconciliation.md` section 8 and 10.

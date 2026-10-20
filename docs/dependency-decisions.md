@@ -45,3 +45,12 @@ later slice moves orchestration under a governed deployment boundary.
 
 Additive changes to existing code: `FailureCategory` += `BROKER_REJECTED`, `RECONCILIATION_REQUIRED`,
 `SIZING_REFUSED`; `simulation` registered in the checker, graph and `pyproject.toml`.
+
+**ADR-10 (architecture decision, Slice 7): order lifecycle & reconciliation packages, and the `simulation/` audit.**
+Problem: order-event handling and multi-ledger reconciliation need a home that cannot manufacture approvals, orders or fills,
+and the `simulation/` bridge (ADR-9) had to be re-checked against "research never imports execution". Findings: nothing
+imports `simulation`; `research` imports neither `risk_execution` nor `simulation`; ADR-9 stands unchanged. Decision: new
+`risk_execution/order_lifecycle` and `risk_execution/reconciliation`, extending (not duplicating) the domain `Order` state machine
+and the Slice 6 reconciler; forbidden-import rules added in `shared/arch_lint/rules.py` (lifecycle/reconciliation -> risk engine, sizing,
+research, simulation, intelligence, governance, data adapters; risk engine/sizing/broker -> lifecycle/reconciliation; lifecycle ->
+reconciliation). No rule was weakened. Open (needs operator approval): `ACKNOWLEDGED -> CANCELLED` contract edge.

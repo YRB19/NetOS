@@ -70,3 +70,15 @@ Tier-2 23, risk 26, sizing 20, broker 18, end-to-end 25, isolation/architecture 
 **Honest caveats:** results are synthetic infrastructure checks, not alpha evidence; a passing Risk Engine is
 not regulatory approval; risk thresholds in tests are examples, not operator-approved limits; RR-4 exit-of-removed
 instrument and `RiskDecision.approved_qty`-as-ceiling are documented interpretations needing operator sign-off.
+
+## Slice 7 — Order state machine & reconciliation hardening
+
+**Status: implemented; acceptance criteria met (see `order-state-machine-reconciliation.md`).** Offline/simulated only;
+no LLM, no live broker, no credentials, no Slice 8 work.
+**Delivered:** `OrderLifecycleManager` (approval re-validation, write-ahead submission, explicit submission uncertainty,
+identity-based idempotent events, quarantine, operator-only halt clearing, checksummed snapshot/restore); execution
+reconciliation (orders, fills, positions, cash, 3-way) extending the Slice 6 comparison; simulated-broker fault injection and
+lookup by client key; pipeline runner integration; ADR-10 import rules.
+**Tests:** 672 unittest tests pass (baseline 593 verified on the uploaded repo before editing; +79). Import checker: 0 violations.
+**Honest caveats:** in-memory persistence only; no exactly-once claim for any real broker; charge rates not independently
+verified in simulation; `ACKNOWLEDGED -> CANCELLED` contract edge is an open operator decision; risk thresholds remain examples.
