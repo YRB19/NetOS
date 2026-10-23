@@ -35,6 +35,12 @@ from shared.versioning.identifiers import new_id
 # explicit resolution transitions out of RECONCILIATION_REQUIRED described
 # in the surrounding prose (not shown in the diagram's arrows directly, but
 # stated as the mechanism by which that state is eventually resolved).
+#
+# AMENDMENT (Slice 7 closure, ADR-11): ACKNOWLEDGED -> CANCELLED added. Stage 1 FR-3 (Must) and the
+# Stage 3 §10 broker interface (`cancel_order`) require cancelling orders; the §9 diagram only draws a
+# cancel edge after a partial fill ("remaining qty cancelled"), leaving the primary case of cancelling
+# a resting, entirely unfilled order unrepresentable. Only a BROKER-CONFIRMED cancel may use this edge.
+# SUBMITTED -> CANCELLED is deliberately NOT added (no broker acknowledgement => stays fail-closed).
 ALLOWED_TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
     OrderState.CANDIDATE: frozenset({OrderState.APPROVED}),
     OrderState.APPROVED: frozenset({OrderState.SUBMITTED}),
@@ -45,6 +51,7 @@ ALLOWED_TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
         {
             OrderState.PARTIALLY_FILLED,
             OrderState.FILLED,
+            OrderState.CANCELLED,
             OrderState.REJECTED,
             OrderState.RECONCILIATION_REQUIRED,
         }

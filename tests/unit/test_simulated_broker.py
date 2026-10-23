@@ -147,12 +147,21 @@ class SimulatedBrokerTests(unittest.TestCase):
         self.assertIs(st.state, OrderState.FILLED)
         self.assertEqual(states(st).count(OrderState.PARTIALLY_FILLED), 1)  # no illegal self-transition
 
-    def test_cancel_of_unfilled_acknowledged_order_is_an_invalid_transition(self):
+    def test_cancel_of_unfilled_acknowledged_order_is_confirmed_cancelled_after_adr_11(self):
+        # SUPERSEDES the Slice 6 assertion that this was an invalid transition. Rationale (ADR-11): FR-3 (Must)
+        # and the Stage 3 broker interface require cancellation; a resting unfilled order must be cancellable.
         b, s = broker()
         st = b.place_order(s, req())
-        with self.assertRaises(InvalidOrderTransition):
-            b.cancel_order(s, st.broker_order_id)
-        self.assertIs(b.get_order_status(s, st.broker_order_id).state, OrderState.ACKNOWLEDGED)
+        self.assertIs(b.cancel_order(s, st.broker_order_id).state, OrderState.CANCELLED)
+        self.assertEqual(b.advance(T1, {A: Decimal("50")}), ())       # a cancelled order never fills
+        self.assertEqual(b.ledger_snapshot()["positions"], {})
+
+    def test_cancel_of_a_submitted_not_acknowledged_order_is_still_not_a_legal_edge(self):
+        from domain.models.order import ALLOWED_TRANSITIONS
+        self.assertNotIn(OrderState.CANCELLED, ALLOWED_TRANSITIONS[OrderState.SUBMITTED])
+        self.assertNotIn(OrderState.CANCELLED, ALLOWED_TRANSITIONS[OrderState.APPROVED])
+        for t in (OrderState.FILLED, OrderState.CANCELLED, OrderState.REJECTED):
+            self.assertEqual(ALLOWED_TRANSITIONS[t], frozenset())     # terminal states stay terminal
 
     def test_reconciliation_required_orders_are_never_filled(self):
         b, s = broker()

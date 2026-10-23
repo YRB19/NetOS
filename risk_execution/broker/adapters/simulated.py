@@ -239,7 +239,7 @@ class SimulatedBrokerAdapter:
         self._check(session)
         bo = self._get(broker_order_id)
         bo.order.last_broker_response = "CANCELLED_BY_REQUEST"
-        # raises InvalidOrderTransition unless PARTIALLY_FILLED (existing state-machine contract)
+        # legal from ACKNOWLEDGED (ADR-11) and PARTIALLY_FILLED; fills already executed are preserved
         bo.order.transition_to(OrderState.CANCELLED, at=self._time(), detail="cancel requested")
         return self._status(bo)
 
@@ -337,4 +337,5 @@ class SimulatedBrokerAdapter:
 
     # ------------------------------------------------------ reconciliation aid
     def ledger_snapshot(self) -> dict:
-        return {"cash": self._cash, "positions": dict(sorted(self._qty.items()))}
+        return {"cash": self._cash, "positions": dict(sorted(self._qty.items())),
+                "avg_costs": {i: self._cost_basis[i] / Decimal(q) for i, q in sorted(self._qty.items())}}

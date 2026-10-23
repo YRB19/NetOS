@@ -46,6 +46,12 @@ class TestOrderStateMachineValidTransitions(unittest.TestCase):
         order.transition_to(OrderState.CANCELLED)
         self.assertTrue(order.is_terminal())
 
+    def test_cancel_confirmed_for_an_unfilled_acknowledged_order_adr_11(self):
+        order = Order(order_request_id="req-1")
+        for st in (OrderState.APPROVED, OrderState.SUBMITTED, OrderState.ACKNOWLEDGED, OrderState.CANCELLED):
+            order.transition_to(st)
+        self.assertTrue(order.is_terminal())
+
     def test_broker_rejects_after_submission(self):
         order = Order(order_request_id="req-1")
         order.transition_to(OrderState.APPROVED)
