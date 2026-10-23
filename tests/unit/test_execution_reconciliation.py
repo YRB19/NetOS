@@ -78,7 +78,7 @@ class GroupD_Reconciliation(unittest.TestCase):
         self.assertIn("FILL_MISSING_IN_LIFECYCLE", kinds(res))
         self.assertIn("POSITION", kinds(res))
         self.assertIs(res.outcome, O.MISMATCH_DETECTED)
-        stale_books = LedgerView(r.opening.cash, {})           # internal portfolio never saw the fill either
+        stale_books = LedgerView(r.opening.cash, {}, {})           # internal portfolio never saw the fill either
         behind = reconcile_from_broker_evidence(r.mgr, r.opening, stale_books, r.broker_view(),
                                                 r.broker.order_statuses(r.session), tuple(r.broker.get_fills(r.session)))
         self.assertFalse(behind.consistent)                    # lifecycle caught up, internal books did not
@@ -86,7 +86,7 @@ class GroupD_Reconciliation(unittest.TestCase):
         r2 = Rig()
         r2.submit()
         reps2 = r2.advance(1)
-        fixed = reconcile_from_broker_evidence(r2.mgr, r2.opening, LedgerView(r2.opening.cash, {}), r2.broker_view(),
+        fixed = reconcile_from_broker_evidence(r2.mgr, r2.opening, LedgerView(r2.opening.cash, {}, {}), r2.broker_view(),
                                                r2.broker.order_statuses(r2.session), tuple(r2.broker.get_fills(r2.session)),
                                                book_evidence=lambda rep: r2.broker_view())
         self.assertIs(fixed.outcome, O.RECONCILED_FROM_BROKER_EVIDENCE, fixed.mismatches)
@@ -118,9 +118,9 @@ class GroupD_Reconciliation(unittest.TestCase):
         r.submit()
         book(r, r.advance(1))
         b = r.broker_view()
-        pos = recon(r, internal=LedgerView(b.cash, {A: 99}))
+        pos = recon(r, internal=LedgerView(b.cash, {A: 99}, b.avg_costs))
         self.assertEqual([m.kind for m in pos.mismatches if m.kind == "POSITION"].count("POSITION"), 2)
-        cash = recon(r, internal=LedgerView(b.cash + Decimal("0.01"), b.positions))
+        cash = recon(r, internal=LedgerView(b.cash + Decimal("0.01"), b.positions, b.avg_costs))
         self.assertIn("CASH", kinds(cash))
         self.assertIs(cash.outcome, O.MISMATCH_DETECTED)
 
@@ -181,7 +181,7 @@ class GroupD_Reconciliation(unittest.TestCase):
         r.submit()
         book(r, r.advance(1))
         b = r.broker_view()
-        bad = recon(r, internal=LedgerView(b.cash + 1, b.positions))
+        bad = recon(r, internal=LedgerView(b.cash + 1, b.positions, b.avg_costs))
         halt = r.mgr.record_reconciliation(bad)
         self.assertIsNotNone(halt)
         with self.assertRaises(ExecutionHalted):
@@ -202,7 +202,7 @@ class GroupD_Reconciliation(unittest.TestCase):
         r.submit()
         book(r, r.advance(1))
         b = r.broker_view()
-        halt = r.mgr.record_reconciliation(recon(r, internal=LedgerView(b.cash + 1, b.positions)))
+        halt = r.mgr.record_reconciliation(recon(r, internal=LedgerView(b.cash + 1, b.positions, b.avg_costs)))
 
         def boom(*_a, **_k):
             raise ConnectionError("broker ledger unavailable mid-reconciliation")
@@ -217,8 +217,8 @@ class GroupD_Reconciliation(unittest.TestCase):
         r.submit()
         book(r, r.advance(1))
         b = r.broker_view()
-        a1 = recon(r, internal=LedgerView(b.cash, {A: 1}))
-        a2 = recon(r, internal=LedgerView(b.cash, {A: 1}))
+        a1 = recon(r, internal=LedgerView(b.cash, {A: 1}, b.avg_costs))
+        a2 = recon(r, internal=LedgerView(b.cash, {A: 1}, b.avg_costs))
         self.assertEqual(a1.run_id, a2.run_id)
         self.assertNotEqual(a1.run_id, recon(r).run_id)
         self.assertTrue(all(m.subject for m in a1.mismatches))

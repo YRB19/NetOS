@@ -44,7 +44,7 @@ class Rig:
         self.broker.set_simulated_time(T0)
         self.now = {"t": T0}
         self.mgr = OrderLifecycleManager(RRV, lambda: self.now["t"])
-        self.opening = LedgerView(Decimal("1000000"), {})
+        self.opening = LedgerView(Decimal("1000000"), {}, {})
 
     def at(self, t: datetime) -> None:
         self.now["t"] = t
@@ -63,7 +63,7 @@ class Rig:
 
     def broker_view(self) -> LedgerView:
         snap = self.broker.ledger_snapshot()
-        return LedgerView(snap["cash"], snap["positions"])
+        return LedgerView(snap["cash"], snap["positions"], snap["avg_costs"])
 
 
 def synthetic_fill(order_key: str, qty: float, price: float, ftype=FillType.PARTIAL, fid: str | None = None,

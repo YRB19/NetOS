@@ -35,6 +35,16 @@ from tests.unit._lifecycle_helpers import (
 S = OrderState
 
 
+class _NoCancelAdapter:
+    """Delegates to the real simulated broker but the cancel request times out (outcome unknown)."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def cancel_order(self, session, broker_order_id):
+        raise TimeoutError("simulated: cancel request timed out")
+
+
 class GroupA_StateMachine(unittest.TestCase):
     def test_happy_path_ack_then_fill(self):
         r = Rig()
@@ -83,20 +93,82 @@ class GroupA_StateMachine(unittest.TestCase):
         self.assertTrue(rec.cancel_requested)
         self.assertIs(rec.order.state, S.PARTIALLY_FILLED)  # only a CANCEL_CONFIRMED event changes state
 
-    def test_failed_cancel_request_proves_nothing(self):
+    def test_failed_or_timed_out_cancel_request_proves_nothing(self):
         r = Rig()
         req, _, _ = r.submit()
-        rec = r.mgr.request_cancel(req.idempotency_key, r.broker, r.session)  # unfilled ACK: broker refuses
+        rec = r.mgr.request_cancel(req.idempotency_key, _NoCancelAdapter(r.broker), r.session)
         self.assertIs(rec.order.state, S.ACKNOWLEDGED)
+        self.assertTrue(rec.cancel_requested)
         self.assertTrue(any(e["status"] == "UNCONFIRMED" for e in rec.event_log))
+        self.assertIs(r.broker.get_order_status(r.session, rec.order.broker_order_id).state, S.ACKNOWLEDGED)
+
+    def test_cancel_request_on_unfilled_order_does_not_itself_change_state(self):
+        r = Rig()
+        req, _, sub = r.submit()
+        rec = r.mgr.request_cancel(req.idempotency_key, r.broker, r.session)   # broker really cancels
+        self.assertIs(rec.order.state, S.ACKNOWLEDGED)                          # ...we still wait for the EVENT
+        res = r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key))
+        self.assertIs(res.status, EventStatus.APPLIED)
+        self.assertIs(rec.order.state, S.CANCELLED)
+        self.assertEqual(rec.filled_qty, 0)
 
     def test_fill_after_cancel_request_but_before_confirmation_is_applied(self):
         r = Rig()
         req, _, _ = r.submit()
-        r.mgr.request_cancel(req.idempotency_key, r.broker, r.session)
+        r.mgr.request_cancel(req.idempotency_key, _NoCancelAdapter(r.broker), r.session)   # request not honoured yet
         for ev in r.fill_events(r.advance(1)):
             self.assertIs(r.mgr.apply_event(ev).status, EventStatus.APPLIED)
         self.assertIs(r.mgr.record(req.idempotency_key).order.state, S.FILLED)
+
+    def test_duplicate_cancel_confirmation_is_idempotent_even_with_new_event_ids(self):
+        r = Rig()
+        req, _, sub = r.submit()
+        bid, k = sub.record.order.broker_order_id, req.idempotency_key
+        self.assertIs(r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k)).status, EventStatus.APPLIED)
+        for eid in (None, "c2", "c3"):
+            self.assertIs(r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k, event_id=eid)).status,
+                          EventStatus.DUPLICATE_IGNORED)
+        self.assertFalse(r.mgr.halted)
+
+    def test_late_fill_after_confirmed_cancel_of_unfilled_order_is_quarantined(self):
+        r = Rig()
+        req, _, sub = r.submit()
+        k = req.idempotency_key
+        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, k))
+        res = r.mgr.apply_event(fill_event(k, synthetic_fill(k, 100, 50, FillType.FULL)))
+        rec = r.mgr.record(k)
+        self.assertIs(res.status, EventStatus.QUARANTINED)
+        self.assertIs(rec.order.state, S.CANCELLED)
+        self.assertEqual((rec.filled_qty, rec.consideration), (0, Decimal(0)))   # no financial effect applied
+        self.assertTrue(r.mgr.halted)
+
+    def test_cancel_and_fill_arriving_in_either_order_never_double_apply(self):
+        for cancel_first in (False, True):
+            with self.subTest(cancel_first=cancel_first):
+                r = Rig(max_fill_fraction_per_bar=Decimal("0.4"))
+                req, _, sub = r.submit()
+                k, bid = req.idempotency_key, sub.record.order.broker_order_id
+                first = fill_event(k, synthetic_fill(k, 40, 50, fid="f1"))
+                second = fill_event(k, synthetic_fill(k, 40, 50, fid="f2"))
+                cancel = BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k)
+                r.mgr.apply_event(first)
+                for ev in ((cancel, second) if cancel_first else (second, cancel)):
+                    r.mgr.apply_event(ev)
+                for ev in (first, second, cancel):          # then everything is re-delivered
+                    r.mgr.apply_event(ev)
+                rec = r.mgr.record(k)
+                self.assertEqual(rec.filled_qty, 40 if cancel_first else 80)
+                self.assertEqual(set(rec.applied_fills), {"f1"} if cancel_first else {"f1", "f2"})
+                self.assertEqual(r.mgr.halted, cancel_first)  # late fill => halt; in-order => none
+
+    def test_cancel_confirmed_while_submitted_without_ack_stays_fail_closed(self):
+        r = Rig()
+        r.broker.inject_fault("FAIL_AFTER_ACCEPT")
+        req, _, sub = r.submit()
+        res = r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, None, req.idempotency_key))
+        self.assertIs(res.status, EventStatus.QUARANTINED)
+        self.assertIs(r.mgr.record(req.idempotency_key).order.state, S.RECONCILIATION_REQUIRED)
+        self.assertTrue(r.mgr.halted)
 
     def test_late_fill_after_recorded_cancellation_is_quarantined_not_accounted(self):
         r = Rig(max_fill_fraction_per_bar=Decimal("0.4"))
@@ -113,13 +185,7 @@ class GroupA_StateMachine(unittest.TestCase):
         self.assertTrue(r.mgr.halted)
         self.assertEqual(len(rec.quarantined), 1)
 
-    def test_cancel_confirmed_on_unfilled_order_escalates_because_contract_has_no_edge(self):
-        r = Rig()
-        req, _, sub = r.submit()
-        res = r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key))
-        self.assertIs(res.status, EventStatus.QUARANTINED)
-        self.assertIs(r.mgr.record(req.idempotency_key).order.state, S.RECONCILIATION_REQUIRED)
-        self.assertTrue(r.mgr.halted)
+    # (superseded by ADR-11: 'cancel confirmed on unfilled ACK escalates' is now 'applied'; see the cancel tests above)
 
     def test_cancel_confirmed_on_filled_order_is_a_conflict(self):
         r = Rig()
@@ -484,9 +550,10 @@ class GroupC_FailureRecovery(unittest.TestCase):
 
     def test_operator_resolution_paths_are_consistent_with_accounted_fills(self):
         r = Rig()
+        r.broker.inject_fault("FAIL_AFTER_ACCEPT")
         req, _, sub = r.submit()
         k = req.idempotency_key
-        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, k))  # -> RECON
+        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, None, k))  # SUBMITTED, no ack -> RECON
         with self.assertRaises(ValueError):
             r.mgr.resolve_reconciliation_required(k, S.FILLED, "op", "evidence")     # 0/100 filled
         with self.assertRaises(ValueError):
