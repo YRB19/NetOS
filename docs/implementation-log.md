@@ -125,3 +125,19 @@ restore now takes the caller's original requests; runner regression (RECON order
 broker order id is unknown; halt now surfaces at the next settlement so live order rows are finalized first.
 **Tests:** 672 passed (593 + 79: lifecycle 44, reconciliation 18, architecture/safety 13, pipeline 4). Import checker: 0 violations.
 **Limitations:** see `order-state-machine-reconciliation.md` section 8 and 10.
+
+## 2026-10-21 — Slice 7 acceptance closure (gap remediation)
+**Baseline:** extracted `NetOS-slice-7.zip` (no `.git` inside, so its commit cannot be verified from the archive; the working checkout I
+edited has `.git` HEAD 54cdff28 with the Slice 7 work uncommitted): 672 unittest tests OK, import checker 0 violations. The roadmap file
+`NetOS_Post_Slice_7_Roadmap.md` and the delta archive were not among the supplied files (the delta was my own earlier output); the
+brief's own gap list and Stage 1/3 documents were used as the contract.
+**Cancellation (ADR-11):** Stage 3 §9 prose/diagram, Stage 1 FR-3 and §10 read; edge `ACKNOWLEDGED -> CANCELLED` added for broker-confirmed
+cancels only; Slice 6 broker test and a lifecycle test superseded with rationale; 8 cancel tests (request-only, timed-out request,
+confirmed unfilled cancel, partial-then-cancel, fill-after-request, late fill after cancel, either-order cancel/fill, duplicates).
+**Fees / average cost:** per-fill charges, components, schedule version, provenance and three-way average cost; policy documented
+(exact money, 1e-9 average-cost tolerance); 12 tests. **Provenance (11 tests):** event/correlation/source/time fields, snapshot v2 + v1
+migration, clipped free text; defect found by my own test and fixed (raw broker text was stored unclipped in history/last response).
+**Recovery (ADR-12):** atomic checkpoint, write-ahead gating, validated restore, `recover_after_restart`; defect found by test and fixed
+(`mark_portfolio_applied` was not checkpointed). 16 restart tests incl. a fresh-broker test documenting the external-state dependency.
+**Tests:** 717 passed (672 + 45). `unittest discover`, `scripts/check_import_graph.py`, `python -m shared.arch_lint.cli .`, `compileall`.
+pytest/ruff/mypy unavailable. **Status:** PARTIALLY COMPLETE (roadmap unavailable; crash windows in docs §12).

@@ -21,11 +21,11 @@ evidence of execution quality, profitability or regulatory approval.
 | CANDIDATE | APPROVED | valid risk approval (manager re-validates) |
 | APPROVED | SUBMITTED | adapter call attempted (write-ahead) |
 | SUBMITTED | ACKNOWLEDGED / REJECTED / RECONCILIATION_REQUIRED | broker response or contradiction |
-| ACKNOWLEDGED | PARTIALLY_FILLED / FILLED / REJECTED / RECONCILIATION_REQUIRED | fill event(s) / broker reject |
+| ACKNOWLEDGED | PARTIALLY_FILLED / FILLED / **CANCELLED** (ADR-11) / REJECTED / RECONCILIATION_REQUIRED | fill event(s) / **broker-confirmed cancel** / broker reject |
 | PARTIALLY_FILLED | FILLED / CANCELLED / RECONCILIATION_REQUIRED | fill / **cancel confirmed** |
 | RECONCILIATION_REQUIRED | FILLED / PARTIALLY_FILLED / CANCELLED / REJECTED | operator resolution consistent with accounted fills |
 | FILLED, CANCELLED, REJECTED | — (terminal, never reopened) | — |
-Never occur: CANDIDATE→FILLED, any skip of APPROVED, any move out of a terminal state, RECONCILIATION_REQUIRED→ACKNOWLEDGED.
+Never occur: CANDIDATE→FILLED, any skip of APPROVED, any move out of a terminal state, RECONCILIATION_REQUIRED→ACKNOWLEDGED, SUBMITTED/APPROVED→CANCELLED.
 
 ## 3. Event identity and idempotency
 Identity: broker `event_id` if present (`evt:<id>`); else fills by `fill_id` (`fill:<id>`); else ACK / REJECT /
@@ -45,7 +45,8 @@ fill_ids with identical qty/price are two fills. Submission idempotency: the exi
 | REJECT | PARTIAL | quarantine, order → RECONCILIATION_REQUIRED (fills preserved) |
 | REJECT | FILLED/CANCELLED | quarantine + halt |
 | CANCEL_CONFIRMED | PARTIAL | applied; fills preserved |
-| CANCEL_CONFIRMED | ACK/SUBMITTED (no fills) | quarantine, → RECONCILIATION_REQUIRED (**no legal edge in the contract**, see §9) |
+| CANCEL_CONFIRMED | ACK (no fills) | applied → CANCELLED (ADR-11) |
+| CANCEL_CONFIRMED | SUBMITTED (no ack recorded) | quarantine, → RECONCILIATION_REQUIRED (no evidence the order was ever live here) |
 | CANCEL_CONFIRMED | FILLED/REJECTED | quarantine + halt |
 | FILL | SUBMITTED | evidence-based implicit ack, then applied |
 | FILL | ACK/PARTIAL | applied if cumulative ≤ qty and fill_type consistent; else quarantine + escalate |
@@ -82,23 +83,73 @@ and append to the record's `corrections`. Reconciliation never calls any of them
 and never edits historical decisions, fills or costs.
 
 ## 8. Persistence guarantees (genuine)
-In-memory by design. `snapshot()` / `restore()` give an explicit, checksum-protected JSON round trip; restore replays order
-history through the real state machine and requires the caller to supply the original `OrderRequest` objects (this
-package never constructs one). A restored manager keeps idempotency, quarantine and halts. **Not provided:** durable storage,
-crash-atomic multi-record updates, restart survival without an explicit snapshot. The interrupted-portfolio-update case
-is covered by a recoverable workflow (`fills_pending_portfolio_application` / `mark_portfolio_applied`; reconciliation reports
-pending application as unresolved), not by a transaction.
+Superseded in detail by §12. Summary: `snapshot()`/`restore()` are the checksummed in-memory primitives; an OPTIONAL `CheckpointStore`
+makes them an explicit, atomic on-disk checkpoint with a mandatory write-ahead record before any broker call. Without a configured
+store the manager remains in-memory only. No database, exactly-once claim or crash-atomic multi-record update is provided.
 
-## 9. Architecture decision (ADR-10; ADR-9 re-audited)
-`simulation/` imports research and execution; nothing imports `simulation`; research never imports execution — verified by AST test
-and the checker. This is valid under ADR-9 and needs no change. New rules (ADR-10): lifecycle/reconciliation cannot import
-risk engine, sizing, research, simulation, intelligence, governance or data adapters; risk/sizing/broker cannot import them;
-lifecycle cannot import reconciliation. Open decision for the operator (not made here): add an `ACKNOWLEDGED -> CANCELLED`
-edge (and possibly `RECONCILIATION_REQUIRED -> ACKNOWLEDGED`) to the domain contract so cancelling an unfilled order is not an escalation.
-A Slice 6 test deliberately asserts the current contract, so it was left untouched.
+## 9. Architecture decisions (ADR-9 re-audited, ADR-10, ADR-11, ADR-12)
+**ADR-9/10:** `simulation/` imports research and execution; nothing imports `simulation`; research never imports execution
+(AST tests + checker). New import rules keep lifecycle/reconciliation away from risk, sizing, research, strategies and data.
 
-## 10. Limitations
-Simulated broker only; fills are synthetic; no durable store; risk thresholds remain unapproved examples; the
-`allow_exit_of_removed_instruments` flag keeps Slice 6 semantics (exit of a *held* removed instrument only, never a buy) and no live policy is chosen.
-Tests: `tests/unit/test_order_lifecycle.py`, `test_execution_reconciliation.py`, `tests/adversarial/test_slice7_isolation.py`,
-`tests/integration/test_slice7_pipeline.py`.
+**ADR-11 — cancellation contract (decided in the closure pass).** Conflict: the Stage 3 §9 diagram draws a cancel edge only from
+PARTIALLY_FILLED ("remaining qty cancelled or expires"); the domain module called its table "exact"; a Slice 6 test asserted
+ACKNOWLEDGED→CANCELLED invalid. Authority for change: **Stage 1 FR-3 (Must)** (submit, modify and *cancel* orders) and the Stage 3
+§10 broker interface (`cancel_order`). §9 is silent about, not prohibiting, cancelling a resting, entirely unfilled order, which is
+the primary use of cancellation; without the edge a *successful* cancel is unrepresentable. The Slice 6 assertion encoded the
+then-implemented contract, not a design requirement. Decision: add exactly one edge, `ACKNOWLEDGED → CANCELLED`, usable only on a
+**broker-confirmed** cancel event. NOT added: SUBMITTED→CANCELLED, APPROVED→CANCELLED, RECONCILIATION_REQUIRED→ACKNOWLEDGED (no
+acknowledgement ⇒ stays fail-closed). Tests changed (rationale in their docstrings): the Slice 6 simulated-broker test now asserts a
+confirmed cancel; one lifecycle test that asserted the old escalation was removed as superseded and replaced by tests of the new
+behaviour. This amends a diagram the code called "exact"; it is the smallest change consistent with FR-3 and is recorded for operator ratification.
+
+**ADR-12 — restart persistence.** One explicit, atomic JSON checkpoint file (`CheckpointStore`); no database, queue or new dependency.
+
+## 10. Per-fill fee and average-cost reconciliation (closure)
+Each matched fill is compared with the broker's fill report on: fill/order identity (order id, client key, risk decision id),
+quantity, price, **total charges**, **itemised components** (brokerage, STT, exchange, SEBI, GST, stamp duty) and **schedule version**.
+Missing broker charges ⇒ `CHARGES_UNAVAILABLE_BROKER` (unresolved) — never zero, never recomputed from today's schedule; missing
+recorded charges/components/schedule ⇒ the matching `*_UNAVAILABLE` unresolved kind. Position **average cost** (excl. fees, as the
+portfolio and broker books define it) is compared three ways (lifecycle-implied, internal portfolio, broker ledger); a source that
+cannot supply it yields `AVG_COST_UNAVAILABLE`, not a match. `LedgerView.avg_costs` is additive (default None = unknown).
+**Policy:** cash, prices, per-fill charge totals/components, quantities — exact Decimal equality (scale-insensitive: 1.10 == 1.1).
+Average cost is a derived quotient, compared with an inclusive absolute tolerance of 1e-9 INR: order-of-operations noise at 28
+digits is ~1e-20, and 1e-9 is ~1000x below the smallest economically meaningful difference (1e-6 INR), so it cannot hide a real
+error. Material = every mismatch and every unresolved item: `record_reconciliation` raises `RECONCILIATION_MISMATCH` and new
+submissions are blocked until an operator clears it with a newer consistent run. **Unchanged caveat:** the offline simulator
+uses one cost model everywhere, so agreement proves booking consistency, not that statutory rates or real execution costs are right.
+
+## 11. Event identity and provenance (closure)
+`BrokerEvent` gained optional `correlation_id`, `source`, `source_version`, `event_time` (None = unknown). Every event-log row
+records: event id, stable identity, idempotency key, order id, broker order id, the record's `correlation_id`
+(`corr_<hash of idempotency key>`, shared by submission, events, halts and recovery) plus any event-supplied correlation id,
+source and version, `event_time` with `event_time_source` (`event` | `fill.timestamp` | `unknown`), `recorded_at` (injected clock —
+distinct from event time), kind, outcome, a clipped (≤200 chars) reason, and the halt id for quarantines. `HaltRecord` gained
+`recorded_at`, `correlation_id`, `event_identity`. `AppliedFill` retains charge components, schedule version, order id and source.
+Snapshot **v2** carries all of it; **v1** snapshots still restore with these fields = unknown (never invented). Broker free text is
+clipped everywhere it is stored; snapshots/checkpoints hold no sessions or credentials. This is not Slice 8's Decision Journal.
+
+## 12. Restart / recovery — exactly what is guaranteed
+**Provided and tested:** (a) *mandatory write-ahead checkpoint*: the intent record (state APPROVED) is checkpointed BEFORE the broker is
+called; if that write fails nothing is sent (`CheckpointError`, record `LOCAL_FAILURE`, halt `CHECKPOINT_FAILURE`); later checkpoint
+failures halt and raise; (b) atomic durable file write (temp + fsync + `os.replace`; a failed write leaves the previous checkpoint
+intact); (c) restore validates version, checksum, request identity (caller supplies the original `OrderRequest`s — lifecycle never
+manufactures one), transition history (replayed through the real state machine) and fill/state consistency; (d)
+`recover_after_restart`: write-ahead records with no outcome become "sent, outcome unknown", every unconfirmed submission is looked up
+at the broker by client key (found ⇒ evidence replayed; absent ⇒ closed, retry needs a NEW order), and broker fills/terminal outcomes
+are replayed idempotently. It never re-sends and never clears halts. Boundaries covered by tests: before submission; after write-ahead
+before acceptance; after acceptance before response; after ack before fills processed; after fill ingestion before portfolio
+application; during reconciliation; duplicate/replayed delivery after restore. The broker object is retained across the simulated
+manager restart (it stands in for an external broker); a test shows a *fresh* broker honestly reports ABSENT, i.e. recovery depends on
+the external system's retained records.
+**Not provided (crash windows left fail-closed or out of scope):** (1) a crash between applying a fill to the portfolio and
+`mark_portfolio_applied` can re-offer an applied fill as pending; the portfolio application must be idempotent by fill id (the research
+portfolio is not) — a double application would surface as a position/cash mismatch and halt; (2) a crash between an in-memory event
+application and its checkpoint is recovered only if the broker still reports the evidence (`get_fills`); (3) the original
+`OrderRequest` store belongs to sizing/Slice 8 — without it restore refuses; (4) no multi-file/multi-process atomicity, no checkpoint
+history, no encryption at rest; (5) nothing here proves exactly-once execution at a real broker.
+
+## 13. Limitations
+Simulated broker only; fills are synthetic; risk thresholds remain unapproved examples; the `allow_exit_of_removed_instruments`
+flag keeps Slice 6 semantics (exit of a *held* removed instrument only, never a buy), no live policy chosen.
+Tests: `tests/unit/test_order_lifecycle.py`, `test_execution_reconciliation.py`, `test_fee_avgcost_reconciliation.py`,
+`test_event_provenance.py`, `test_restart_recovery.py`, `tests/adversarial/test_slice7_isolation.py`, `tests/integration/test_slice7_pipeline.py`.

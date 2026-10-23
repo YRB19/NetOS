@@ -54,3 +54,18 @@ imports `simulation`; `research` imports neither `risk_execution` nor `simulatio
 and the Slice 6 reconciler; forbidden-import rules added in `shared/arch_lint/rules.py` (lifecycle/reconciliation -> risk engine, sizing,
 research, simulation, intelligence, governance, data adapters; risk engine/sizing/broker -> lifecycle/reconciliation; lifecycle ->
 reconciliation). No rule was weakened. Open (needs operator approval): `ACKNOWLEDGED -> CANCELLED` contract edge.
+
+**ADR-11 (architecture decision, Slice 7 closure): add `ACKNOWLEDGED -> CANCELLED` to the Order contract.**
+Problem: confirmed cancellation of a resting, entirely unfilled order had no legal transition (the Stage 3 §9 diagram only draws a cancel
+edge after a partial fill), while Stage 1 FR-3 (Must) and the Stage 3 §10 broker interface require cancellation. Options: (a) keep the
+contract and escalate every such cancel to RECONCILIATION_REQUIRED (safe but makes the normal cancel path a halt); (b) add the single
+edge for broker-confirmed cancels (chosen); (c) also allow SUBMITTED/APPROVED -> CANCELLED (rejected: no acknowledgement evidence).
+Consequences: domain table + simulated broker + lifecycle `_on_cancel` updated; the Slice 6 test that asserted the old behaviour was
+superseded (rationale in its docstring); late fills after a confirmed cancel remain quarantined + halted. Invalidated if the operator
+rules the diagram authoritative as-is (revert the one edge; every other mechanism is unchanged).
+
+**ADR-12 (architecture decision, Slice 7 closure): explicit atomic file checkpoint for the order lifecycle.**
+Problem: snapshot/restore alone did not demonstrate restart safety. Decision: `risk_execution/order_lifecycle/checkpoint.py` — one JSON file,
+temp-file + fsync + `os.replace`, mandatory write-ahead checkpoint before any broker call, restore validates version/checksum/request
+identity/history, recovery reconciles against retained broker state by client key and never re-sends. No database, queue or third-party
+dependency. Limits and unsupported crash windows are listed in docs/order-state-machine-reconciliation.md §12.

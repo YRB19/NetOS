@@ -73,12 +73,20 @@ instrument and `RiskDecision.approved_qty`-as-ceiling are documented interpretat
 
 ## Slice 7 — Order state machine & reconciliation hardening
 
-**Status: implemented; acceptance criteria met (see `order-state-machine-reconciliation.md`).** Offline/simulated only;
-no LLM, no live broker, no credentials, no Slice 8 work.
-**Delivered:** `OrderLifecycleManager` (approval re-validation, write-ahead submission, explicit submission uncertainty,
-identity-based idempotent events, quarantine, operator-only halt clearing, checksummed snapshot/restore); execution
-reconciliation (orders, fills, positions, cash, 3-way) extending the Slice 6 comparison; simulated-broker fault injection and
-lookup by client key; pipeline runner integration; ADR-10 import rules.
-**Tests:** 672 unittest tests pass (baseline 593 verified on the uploaded repo before editing; +79). Import checker: 0 violations.
-**Honest caveats:** in-memory persistence only; no exactly-once claim for any real broker; charge rates not independently
-verified in simulation; `ACKNOWLEDGED -> CANCELLED` contract edge is an open operator decision; risk thresholds remain examples.
+**Status: PARTIALLY COMPLETE (acceptance closure pass, 2026-10-21).** The original Slice 7 status line ("implemented; acceptance
+criteria met") is withdrawn: it was written without the roadmap, and the closure review found four real gaps, now closed in code and
+tests (below). Roadmap-level acceptance cannot be certified because `NetOS_Post_Slice_7_Roadmap.md` was not supplied to either pass.
+Offline/simulated only; no LLM, no live broker, no credentials, no Slice 8 work.
+**Closed in the closure pass:** (1) cancellation contract — ADR-11 adds `ACKNOWLEDGED -> CANCELLED` (broker-confirmed only), authority
+Stage 1 FR-3 + Stage 3 §10; (2) per-fill charge/component/schedule-version and three-way average-cost reconciliation with a documented
+policy; (3) event provenance (ids, correlation, source, event time vs recorded time, halt/quarantine references) with snapshot v2 and
+v1 compatibility; (4) restart/recovery: atomic mandatory write-ahead checkpoint, validated restore, broker-lookup recovery, tests at
+every required boundary.
+**Original delivery:** `OrderLifecycleManager`, idempotent identity-based event handling, quarantine, operator-only halt clearing,
+execution reconciliation, simulated-broker fault injection, runner integration, ADR-10 import rules.
+**Tests:** 717 unittest tests pass (672 baseline verified from the delivered archive; +45). Import checker and `shared.arch_lint.cli`: 0 violations.
+pytest, ruff and mypy are not installed in this environment, so they were not run.
+**Still unresolved / limits:** roadmap not available for line-by-line acceptance; the portfolio-application crash window (portfolio
+update vs `mark_portfolio_applied`) needs an idempotent-by-fill-id portfolio (not built; fail-closed via reconciliation); the original
+`OrderRequest` store needed by restore belongs to sizing/Slice 8; no exactly-once claim for any real broker; charge rates not
+independently verified in simulation; ADR-11 awaits operator ratification; risk thresholds remain unapproved examples.
