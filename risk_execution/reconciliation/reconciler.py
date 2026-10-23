@@ -29,6 +29,17 @@ from risk_execution.order_lifecycle.manager import OrderLifecycleManager
 from shared.versioning.content_hash import hash_json_stable
 
 
+# --- comparison policy (documented in docs/order-state-machine-reconciliation.md §6) -----------------------
+# * Cash, per-fill prices, per-fill charge totals/components and quantities are compared EXACTLY (Decimal).
+# * Position AVERAGE COST is a derived quotient (cost basis / quantity); the three sources reach it by
+#   mathematically equivalent but differently-ordered arithmetic. Comparison is therefore ABSOLUTE and
+#   INCLUSIVE within AVG_COST_TOLERANCE = 1e-9 INR. At Decimal's default 28 significant digits the
+#   order-of-operations noise is far below this (~1e-20), while the tolerance sits ~1000x below the
+#   smallest economically meaningful discrepancy (1e-6 INR), so it cannot hide a real error.
+# * Unknown is never zero and never a match: missing charges / average cost => unresolved.
+AVG_COST_TOLERANCE = Decimal("0.000000001")
+
+
 class ReconciliationOutcome(str, Enum):  # noqa: UP042
     CONSISTENT = "CONSISTENT"
     CONSISTENT_AFTER_SAFE_DUPLICATES = "CONSISTENT_AFTER_SAFE_DUPLICATES"
@@ -54,6 +65,7 @@ class Mismatch:
 class LedgerView:
     cash: Decimal
     positions: Mapping[str, int]
+    avg_costs: Mapping[str, Decimal] | None = None   # None = this source cannot supply average cost (UNKNOWN)
 
 
 @dataclass(frozen=True)
@@ -85,20 +97,70 @@ def compare_cash_positions(a_cash: Decimal, a_pos: Mapping[str, int], b_cash: De
     return out
 
 
-def _implied(mgr: OrderLifecycleManager, opening: LedgerView) -> tuple[Decimal | None, dict[str, int]]:
+def _implied(mgr: OrderLifecycleManager, opening: LedgerView) -> tuple[Decimal | None, dict[str, int], dict[str, Decimal | None]]:
     cash: Decimal | None = Decimal(opening.cash)
     pos = {k: int(v) for k, v in opening.positions.items()}
+    basis: dict[str, Decimal | None] = {}
+    for i, q in pos.items():  # opening average cost unknown => implied average cost for that instrument is unknown
+        a = None if opening.avg_costs is None else opening.avg_costs.get(i)
+        basis[i] = None if a is None else Decimal(a) * Decimal(q)
     for r in mgr.records():
         sign = 1 if r.request.side.value == "BUY" else -1
+        i = r.request.instrument_id
         for f in r.applied_fills.values():
-            pos[r.request.instrument_id] = pos.get(r.request.instrument_id, 0) + sign * f.quantity
+            old = pos.get(i, 0)
+            pos[i] = old + sign * f.quantity
+            b = basis.get(i, Decimal(0))
+            if b is not None:
+                if sign == 1:
+                    basis[i] = b + Decimal(f.quantity) * f.price
+                elif old > 0:
+                    basis[i] = b * Decimal(old - f.quantity) / Decimal(old)
             if cash is not None:
                 if f.charges_total is None:
                     cash = None
                 else:
                     t = Decimal(f.quantity) * f.price
                     cash += (-(t + f.charges_total)) if sign == 1 else (t - f.charges_total)
-    return cash, {k: v for k, v in pos.items() if v != 0}
+    pos = {k: v for k, v in pos.items() if v != 0}
+    avg = {i: (None if basis.get(i) is None else basis[i] / Decimal(q)) for i, q in pos.items()}
+    return cash, pos, avg
+
+
+def _avg_of(v: LedgerView):
+    return v.avg_costs
+
+
+def _compare_fill(mm: list, r, f, rep) -> None:  # noqa: ANN001
+    fid = f.fill_id
+    bf = rep.fill
+    if (f.quantity, f.price) != (int(bf.quantity), Decimal(str(bf.price))):
+        mm.append(Mismatch("FILL_CONTRADICTION", fid, f"{f.quantity}@{f.price}", f"{bf.quantity}@{bf.price}"))
+    if (bf.order_id, rep.idempotency_key, rep.risk_decision_id) != (r.order.order_id, r.key, r.request.risk_decision_id) \
+            or (f.order_id is not None and f.order_id != bf.order_id):
+        mm.append(Mismatch("FILL_PROVENANCE", fid, f"order {r.order.order_id} key {r.key}",
+                           f"order {bf.order_id} key {rep.idempotency_key}"))
+    bc = getattr(rep, "charges", None)
+    if bc is None:
+        mm.append(Mismatch("CHARGES_UNAVAILABLE_BROKER", fid, "broker charges", "absent", unresolved=True))
+    if f.charges_total is None:
+        mm.append(Mismatch("CHARGES_UNAVAILABLE_LIFECYCLE", fid, "recorded charges", "absent", unresolved=True))
+    if bc is None or f.charges_total is None:
+        return  # never substitute zero or a recomputed (today's-schedule) value for missing broker evidence
+    if Decimal(bc.total_cost) != f.charges_total:
+        mm.append(Mismatch("FILL_CHARGES", fid, f"lifecycle={f.charges_total}", f"broker={bc.total_cost}"))
+    if f.schedule_version is None:
+        mm.append(Mismatch("SCHEDULE_VERSION_UNAVAILABLE", fid, "recorded schedule version", "absent", unresolved=True))
+    elif f.schedule_version != bc.schedule_version:
+        mm.append(Mismatch("FILL_SCHEDULE_VERSION", fid, f"lifecycle={f.schedule_version}", f"broker={bc.schedule_version}"))
+    if f.charges_components is None:
+        mm.append(Mismatch("CHARGE_COMPONENTS_UNAVAILABLE", fid, "recorded components", "absent", unresolved=True))
+    else:
+        theirs = {"brokerage": bc.brokerage, "stt": bc.stt, "exchange_txn_charges": bc.exchange_txn_charges,
+                  "sebi_charges": bc.sebi_charges, "gst": bc.gst, "stamp_duty": bc.stamp_duty}
+        for name, val in f.charges_components:
+            if Decimal(val) != Decimal(theirs[name]):
+                mm.append(Mismatch("FILL_CHARGE_COMPONENT", f"{fid}:{name}", f"lifecycle={val}", f"broker={theirs[name]}"))
 
 
 def reconcile_execution(
@@ -110,7 +172,7 @@ def reconcile_execution(
     broker_fills: tuple | None,
 ) -> ReconciliationResult:
     mm: list[Mismatch] = []
-    icash, ipos = _implied(mgr, opening)
+    icash, ipos, iavg = _implied(mgr, opening)
 
     # ---- orders -----------------------------------------------------------
     known_broker_ids = set()
@@ -150,9 +212,9 @@ def reconcile_execution(
         for fid in sorted(set(ours) - set(theirs)):
             mm.append(Mismatch("FILL_NOT_AT_BROKER", fid, "broker holds it", "absent"))
         for fid in sorted(set(ours) & set(theirs)):
-            f, rep = ours[fid][1], theirs[fid]
-            if (f.quantity, f.price) != (int(rep.fill.quantity), Decimal(str(rep.fill.price))):
-                mm.append(Mismatch("FILL_CONTRADICTION", fid, f"{f.quantity}@{f.price}", f"{rep.fill.quantity}@{rep.fill.price}"))
+            r, f = ours[fid]
+            rep = theirs[fid]
+            _compare_fill(mm, r, f, rep)
     for ident_owner in mgr.records():
         for ident in ident_owner.quarantined:
             if not any(m.kind == "QUARANTINED_FILL" for m in mm) and ident_owner.quarantined[ident][1] is None:
@@ -174,6 +236,23 @@ def reconcile_execution(
                                    ("internal portfolio", internal.cash, "broker", broker.cash)):
             if a != b:
                 mm.append(Mismatch("CASH", "cash", f"{a_lab}={a}", f"{b_lab}={b}"))
+    views = (("lifecycle-implied", ipos, iavg), ("internal portfolio", internal.positions, _avg_of(internal)),
+             ("broker", broker.positions, _avg_of(broker)))
+    for inst in sorted({i for _l, p, _a in views for i in p}):
+        known: list[tuple[str, Decimal]] = []
+        for lab, p, a in views:
+            if p.get(inst, 0) == 0:
+                continue  # not held in this source: quantity mismatch (if any) is already reported above
+            v = None if a is None else a.get(inst)
+            if v is None:
+                mm.append(Mismatch("AVG_COST_UNAVAILABLE", inst, "average cost known", f"{lab} cannot supply it", unresolved=True))
+            else:
+                known.append((lab, Decimal(v)))
+        for k in range(len(known)):
+            for j in range(k + 1, len(known)):
+                (la, va), (lb, vb) = known[k], known[j]
+                if abs(va - vb) > AVG_COST_TOLERANCE:
+                    mm.append(Mismatch("AVG_COST", inst, f"{la}={va}", f"{lb}={vb}", detail=f"(|diff|>{AVG_COST_TOLERANCE})"))
     pend = mgr.fills_pending_portfolio_application()
     for key, f in pend:
         mm.append(Mismatch("PORTFOLIO_APPLICATION_PENDING", f.fill_id, "applied to portfolio", "not confirmed",

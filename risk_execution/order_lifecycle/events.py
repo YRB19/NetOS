@@ -13,6 +13,7 @@ its payload fingerprint is identical; if it differs it is a CONFLICT (never gues
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 from domain.models.order_request import Fill
@@ -36,6 +37,11 @@ class BrokerEvent:
     fill: Fill | None = None
     charges: CostEstimate | None = None
     detail: str = ""
+    # --- provenance (Slice 7 closure). All optional; None means UNKNOWN, never a synthesized value. ---
+    correlation_id: str | None = None   # as supplied by the caller/adapter; the record has its own (see manager)
+    source: str | None = None           # adapter / feed identity
+    source_version: str | None = None
+    event_time: datetime | None = None  # time per the SOURCE's own evidence (distinct from our recorded time)
 
     def order_ref(self) -> str | None:
         return self.idempotency_key or self.broker_order_id
@@ -65,4 +71,5 @@ def event_from_fill_report(report, event_id: str | None = None) -> BrokerEvent: 
     return BrokerEvent(
         EventKind.FILL, broker_order_id=report.broker_order_id, idempotency_key=report.idempotency_key,
         event_id=event_id, fill=report.fill, charges=report.charges, detail=report.state_after.value,
+        source=report.adapter_id, source_version=report.adapter_version,
     )

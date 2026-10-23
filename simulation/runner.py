@@ -239,7 +239,7 @@ class PipelineHarness(ResearchHarness):
         clock = {"t": cycles[0]}
         mgr = OrderLifecycleManager(risk_version_id, lambda: clock["t"])  # Slice 7: lifecycle + halts
         st.lifecycle = mgr
-        opening = LedgerView(capital, {})
+        opening = LedgerView(capital, {}, {})
         order_ts: list[datetime] = []
         prev_universe: PermittedUniverse | None = None
         peak = capital
@@ -471,8 +471,9 @@ class PipelineHarness(ResearchHarness):
             raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
                                      "portfolio/broker ledgers disagree: " + "; ".join(rec.mismatches))  # fmt: skip
         # Slice 7: order/fill/position/cash reconciliation across lifecycle, internal books and broker
-        full = reconcile_execution(mgr, opening, LedgerView(portfolio.cash, pf_pos),
-                                   LedgerView(ledger["cash"], ledger["positions"]),
+        pf_avg = {p_["instrument_id"]: Decimal(p_["avg_cost"]) for p_ in portfolio.positions_snapshot()}
+        full = reconcile_execution(mgr, opening, LedgerView(portfolio.cash, pf_pos, pf_avg),
+                                   LedgerView(ledger["cash"], ledger["positions"], ledger["avg_costs"]),
                                    broker.order_statuses(session), broker.get_fills(session))
         halt = mgr.record_reconciliation(full)
         st.recon_rows[-1].update(execution_reconciliation={"run_id": full.run_id, "outcome": full.outcome.value,
