@@ -424,11 +424,12 @@ class PipelineHarness(ResearchHarness):
             lv = live[rep.broker_order_id]
             price = _dec(rep.fill.price)
             qty = int(rep.fill.quantity)
-            if lv.request.side is Action.BUY:
-                change = portfolio.buy(lv.request.instrument_id, qty, price, rep.charges.total_cost)
-            else:
-                change = portfolio.sell(lv.request.instrument_id, qty, price, rep.charges.total_cost)
+            app = portfolio.apply_fill(rep.fill.fill_id, lv.request.instrument_id, lv.request.side.value, qty, price,
+                                       rep.charges.total_cost, order_id=rep.fill.order_id, source=rep.adapter_id)
             mgr.mark_portfolio_applied(rep.fill.fill_id)
+            if app.change is None:  # portfolio had already booked this fill (ADR-13): confirmed, no second effect
+                continue
+            change = app.change
             lv.fills.append(rep)
             lv.pnl += change.realized_pnl_gross
             row = {
