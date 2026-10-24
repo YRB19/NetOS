@@ -29,6 +29,8 @@ class FailureCategory(str, Enum):  # noqa: UP042 - matches repository enum conve
     RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
     SIZING_REFUSED = "SIZING_REFUSED"
     UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
+    # Slice 7 final closure (additive): portfolio checkpoint could not be written / read / validated
+    PORTFOLIO_CHECKPOINT_ERROR = "PORTFOLIO_CHECKPOINT_ERROR"
 
 
 class RunStatus(str, Enum):  # noqa: UP042
