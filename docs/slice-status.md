@@ -73,7 +73,9 @@ instrument and `RiskDecision.approved_qty`-as-ceiling are documented interpretat
 
 ## Slice 7 — Order state machine & reconciliation hardening
 
-**Status: PARTIALLY COMPLETE (acceptance closure pass, 2026-10-21).** The original Slice 7 status line ("implemented; acceptance
+**Status: COMPLETE against the final-closure gate (2026-10-23), with one stated caveat: `NetOS_Post_Slice_7_Roadmap.md` was not in the
+engineering workspace, so roadmap line-by-line acceptance was NOT inspected or certified; the closure-prompt gate was used instead. ADR-11 is
+pending operator ratification.** Previous status (2026-10-21, kept for history): PARTIALLY COMPLETE (acceptance closure pass). The original Slice 7 status line ("implemented; acceptance
 criteria met") is withdrawn: it was written without the roadmap, and the closure review found four real gaps, now closed in code and
 tests (below). Roadmap-level acceptance cannot be certified because `NetOS_Post_Slice_7_Roadmap.md` was not supplied to either pass.
 Offline/simulated only; no LLM, no live broker, no credentials, no Slice 8 work.
@@ -86,7 +88,13 @@ every required boundary.
 execution reconciliation, simulated-broker fault injection, runner integration, ADR-10 import rules.
 **Tests:** 717 unittest tests pass (672 baseline verified from the delivered archive; +45). Import checker and `shared.arch_lint.cli`: 0 violations.
 pytest, ruff and mypy are not installed in this environment, so they were not run.
-**Still unresolved / limits:** roadmap not available for line-by-line acceptance; the portfolio-application crash window (portfolio
-update vs `mark_portfolio_applied`) needs an idempotent-by-fill-id portfolio (not built; fail-closed via reconciliation); the original
+**Final closure (2026-10-23, ADR-13):** the portfolio-application crash window is closed: `ResearchPortfolio.apply_fill` is idempotent by
+`fill_id` (payload fingerprint; conflicting reuse fails closed), commits financials + applied-fill ledger in one atomic checksummed file,
+and `simulation/settlement.apply_pending_fills` recovers both interleavings; 21 new tests incl. rebuilt manager + restored portfolio.
+**Tests:** 738 unittest tests pass (717 verified baseline + 21). Import checker and `shared.arch_lint.cli`: 0 violations; `compileall` clean.
+pytest/ruff/mypy unavailable here, not run. **Remaining limits:** two checkpoint files (safe interleavings, not one joint atomic commit);
+`PipelineHarness` uses an in-memory portfolio and has no integrated crash-resume; roadmap not inspected; ADR-11 awaiting operator ratification.
+**Earlier limits (history):** roadmap not available for line-by-line acceptance; the portfolio-application crash window (portfolio
+update vs `mark_portfolio_applied`) needed an idempotent-by-fill-id portfolio (now built, above); the original
 `OrderRequest` store needed by restore belongs to sizing/Slice 8; no exactly-once claim for any real broker; charge rates not
 independently verified in simulation; ADR-11 awaits operator ratification; risk thresholds remain unapproved examples.

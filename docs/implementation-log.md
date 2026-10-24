@@ -141,3 +141,15 @@ migration, clipped free text; defect found by my own test and fixed (raw broker 
 (`mark_portfolio_applied` was not checkpointed). 16 restart tests incl. a fresh-broker test documenting the external-state dependency.
 **Tests:** 717 passed (672 + 45). `unittest discover`, `scripts/check_import_graph.py`, `python -m shared.arch_lint.cli .`, `compileall`.
 pytest/ruff/mypy unavailable. **Status:** PARTIALLY COMPLETE (roadmap unavailable; crash windows in docs §12).
+
+## 2026-10-23 — Slice 7 final closure: idempotent portfolio settlement (ADR-13)
+**Baseline verified on the supplied tree (NetOS_2.zip):** 717 unittest tests OK; import checker and `shared.arch_lint.cli` 0 violations;
+`compileall` clean; pytest not runnable here (the bundled `.venv` is a different interpreter), ruff/mypy unavailable.
+**Audit:** runner called in-memory `buy/sell` then `mark_portfolio_applied`; the portfolio had no fill identity and no persistence, so a
+replayed pending fill would double-book. **Change:** `ResearchPortfolio.apply_fill` (fill-id idempotency, fingerprint, conflict ⇒ fail closed),
+`snapshot/restore/restore_from_store` with checksum + independent ledger replay, `research/harness/portfolio_checkpoint.py`,
+`simulation/settlement.py`, runner switched to `apply_fill`, additive `FailureCategory.PORTFOLIO_CHECKPOINT_ERROR`; direct `buy/sell`
+unchanged for non-checkpointed use. **Tests:** `tests/unit/test_portfolio_settlement.py` (+21). A first draft of one test used a purchase
+that exactly exhausted cash as an "insufficient cash" case — a test error, fixed in the test; the code was correct. **Result:** 738 pass.
+**Docs:** §12a and ADR-13 added; simulated-broker cancellation text corrected to ADR-11; status updated. ADR-11 still pending operator ratification.
+Notion not updated (see delivery note); no Slice 8 work.

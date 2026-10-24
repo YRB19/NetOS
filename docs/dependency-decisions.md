@@ -69,3 +69,12 @@ Problem: snapshot/restore alone did not demonstrate restart safety. Decision: `r
 temp-file + fsync + `os.replace`, mandatory write-ahead checkpoint before any broker call, restore validates version/checksum/request
 identity/history, recovery reconciles against retained broker state by client key and never re-sends. No database, queue or third-party
 dependency. Limits and unsupported crash windows are listed in docs/order-state-machine-reconciliation.md §12.
+
+**ADR-13 (architecture decision, Slice 7 final closure): idempotent portfolio settlement with its own atomic checkpoint.**
+Problem: the crash window between booking a fill in `ResearchPortfolio` and `mark_portfolio_applied` could double-book a fill, and the
+portfolio could not be restored. Decision: `ResearchPortfolio.apply_fill` keyed by `fill_id` with a payload fingerprint and an applied-fill
+ledger, committed together with the financial state in one checksummed JSON file (`research/harness/portfolio_checkpoint.py`, same
+temp-file/fsync/`os.replace` convention as ADR-12, duplicated rather than imported because `research/` must not import `risk_execution/`),
+plus `simulation/settlement.apply_pending_fills`. Alternatives rejected: remembering processed fills only in the lifecycle manager (cannot know
+whether the portfolio effect was booked); a database or queue (not justified at this scale). One additive `FailureCategory`
+(`PORTFOLIO_CHECKPOINT_ERROR`). No new dependency. Limits: docs/order-state-machine-reconciliation.md §12a.

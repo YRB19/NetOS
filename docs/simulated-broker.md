@@ -12,11 +12,14 @@ credentials, no network, no SDK, no wall clock (time is injected with `set_simul
 simulation-only `advance(timestamp, open_prices)`, `ledger_snapshot()` and the test-only fault hook
 `inject_ambiguous_response`.
 
-## Lifecycle — the existing Order state machine, unchanged
+## Lifecycle — the Order state machine as amended by ADR-11
 
-`CANDIDATE -> APPROVED -> SUBMITTED -> ACKNOWLEDGED -> PARTIALLY_FILLED / FILLED`, `PARTIALLY_FILLED -> CANCELLED`,
-`REJECTED`, `RECONCILIATION_REQUIRED`. The existing contract forbids cancelling an unfilled ACKNOWLEDGED
-order; `cancel_order` there raises `InvalidOrderTransition` (contract deliberately not changed).
+`CANDIDATE -> APPROVED -> SUBMITTED -> ACKNOWLEDGED -> PARTIALLY_FILLED / FILLED`, `ACKNOWLEDGED -> CANCELLED` and
+`PARTIALLY_FILLED -> CANCELLED` (both only on a **broker-confirmed** cancel), `REJECTED`, `RECONCILIATION_REQUIRED`.
+`cancel_order` on this simulator cancels an ACKNOWLEDGED or PARTIALLY_FILLED order and returns the CANCELLED status (fills already
+executed are preserved); cancelling an already-terminal order still raises `InvalidOrderTransition`. The edge was added by
+ADR-11 (Slice 7 closure; **pending operator ratification** — see docs/order-state-machine-reconciliation.md §9). This replaces the
+earlier text that said cancelling an unfilled ACKNOWLEDGED order was forbidden.
 
 ## Explicit fill assumption (`FULL_OR_FIXED_FRACTION_AT_NEXT_BAR_OPEN_NO_SLIPPAGE`)
 

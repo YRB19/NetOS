@@ -104,6 +104,11 @@ behaviour. This amends a diagram the code called "exact"; it is the smallest cha
 
 **ADR-12 — restart persistence.** One explicit, atomic JSON checkpoint file (`CheckpointStore`); no database, queue or new dependency.
 
+**ADR-13 — idempotent, durable portfolio settlement (final closure).** Fill identity lives in the portfolio itself (`apply_fill`, §12a), with
+its own atomic checkpoint file; no database/queue/dependency. ADR-11 remains **pending explicit operator ratification**: the code keeps
+the `ACKNOWLEDGED -> CANCELLED` edge; if the operator rejects it, a separate approved change must revert that one edge — it is not
+reverted or presumed ratified here.
+
 ## 10. Per-fill fee and average-cost reconciliation (closure)
 Each matched fill is compared with the broker's fill report on: fill/order identity (order id, client key, risk decision id),
 quantity, price, **total charges**, **itemised components** (brokerage, STT, exchange, SEBI, GST, stamp duty) and **schedule version**.
@@ -141,12 +146,44 @@ before acceptance; after acceptance before response; after ack before fills proc
 application; during reconciliation; duplicate/replayed delivery after restore. The broker object is retained across the simulated
 manager restart (it stands in for an external broker); a test shows a *fresh* broker honestly reports ABSENT, i.e. recovery depends on
 the external system's retained records.
-**Not provided (crash windows left fail-closed or out of scope):** (1) a crash between applying a fill to the portfolio and
-`mark_portfolio_applied` can re-offer an applied fill as pending; the portfolio application must be idempotent by fill id (the research
-portfolio is not) — a double application would surface as a position/cash mismatch and halt; (2) a crash between an in-memory event
+**Not provided (crash windows left fail-closed or out of scope):** (1) *[CLOSED by the final closure pass — see §12a; the original
+text said the portfolio was not idempotent by fill id and a double application would surface as a mismatch and halt]*; (2) a crash between an in-memory event
 application and its checkpoint is recovered only if the broker still reports the evidence (`get_fills`); (3) the original
 `OrderRequest` store belongs to sizing/Slice 8 — without it restore refuses; (4) no multi-file/multi-process atomicity, no checkpoint
 history, no encryption at rest; (5) nothing here proves exactly-once execution at a real broker.
+
+## 12a. Idempotent, durable portfolio settlement (final closure, ADR-13)
+**Audit of the prior order.** Before this pass the runner did `ResearchPortfolio.buy/sell` (in-memory only, no fill identity) and then
+`mark_portfolio_applied`. Only the lifecycle manager could be restored from disk; the portfolio could not, and did not know which fills
+it had booked, so a replay of a pending fill would have booked it twice.
+**Contract.** `ResearchPortfolio.apply_fill(fill_id, instrument_id, side, quantity, price, cost, *, order_id, source)`:
+validates identity/side/quantity/price/cost with the existing accounting checks; runs the *existing* `_buy`/`_sell` accounting (no second
+model, Decimal throughout) on a copy; records `fill_id` + a fingerprint (sha-256 of fill_id, instrument, side, quantity, price, cost in
+canonical Decimal notation; `order_id`/`source` are provenance, stored but not fingerprinted). Same id + same payload ⇒ `ALREADY_APPLIED`,
+no effect (`change` is None). Same id + different payload ⇒ `ResearchRunFailure(ACCOUNTING_ERROR)`, no effect. Cash, position/cost basis,
+cumulative costs, turnover, realized P&L, transaction count and the applied-fill ledger change together or not at all.
+**Persistence.** With a `PortfolioCheckpointStore` (`research/harness/portfolio_checkpoint.py`, temp file + fsync + `os.replace`, a
+research-local copy of the ADR-12 convention because research may not import execution) the new state is written as ONE file *before* the
+live object adopts it. A failed write raises `PORTFOLIO_CHECKPOINT_ERROR`; the live object, the disk file and the fill's eligibility are
+unchanged and `mark_portfolio_applied` is never reached. The file holds a body (initial capital, cash, holdings with cost basis, costs,
+turnover, realized P&L, transaction count, ordered applied-fill ledger) and its checksum. `restore` fails closed on: bad/missing checksum,
+unsupported version, malformed fields, duplicate ledger ids, entry/fingerprint mismatch, or any difference between the stored state and an
+independent replay of the ledger from the initial capital. A missing file is an error, never an empty portfolio; constructing a
+checkpointed portfolio refuses to overwrite an existing checkpoint; a checkpointed portfolio rejects direct `buy`/`sell`.
+**Recovery sweep.** `simulation/settlement.apply_pending_fills(manager, portfolio)`: for each fill the lifecycle lists as pending, call
+`apply_fill` then `mark_portfolio_applied`. Sequence 1 (fill recorded, portfolio not booked) ⇒ APPLIED once. Sequence 2 (portfolio booked
+durably, marker not recorded) ⇒ ALREADY_APPLIED, portfolio untouched, marker then recorded. Fills with unknown charges are never settled
+as zero (`RECONCILIATION_REQUIRED`).
+**Proven by tests** (`tests/unit/test_portfolio_settlement.py`, 21 tests; expected values are hand-written literals or an independent plain-Decimal
+reference ledger): both sequences with a genuinely rebuilt manager *and* a portfolio restored from its file; commit-failure leaves the fill
+re-appliable; persistence failure is not reported as settlement; corrupt/tampered/inconsistent checkpoints (including ones with a recomputed
+valid checksum) fail closed; duplicate lifecycle events and broker-evidence replay after recovery change nothing; reconciliation after
+recovery agrees with independent broker evidence.
+**Still not provided:** the lifecycle checkpoint and the portfolio checkpoint are two files, so there is no joint atomic commit — the
+design makes every interleaving safe rather than atomic (the only cross-file window is sequence 2, handled above); `PipelineHarness`
+runs with an in-memory portfolio and does not itself resume a run after a crash (settlement + restore are callable building blocks, not an
+integrated resume feature); a crash *during* the OS-level `os.replace`/fsync is trusted to the filesystem; no multi-process locking, no
+encryption at rest, no checkpoint history; the simulated broker is not a real broker.
 
 ## 13. Limitations
 Simulated broker only; fills are synthetic; risk thresholds remain unapproved examples; the `allow_exit_of_removed_instruments`
