@@ -17,3 +17,5 @@ class PipelineRunResult:
     broker_fills: tuple[dict, ...]
     reconciliations: tuple[dict, ...]
     summary: dict
+    journal_ref: dict | None = None  # deterministic reference to the incremental journal (Slice 8)
+    telemetry: dict | None = None  # wall-clock/operational metrics; never persisted into run artifacts

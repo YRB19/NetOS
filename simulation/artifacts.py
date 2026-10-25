@@ -19,7 +19,7 @@ def _jsonl(rows) -> str:  # noqa: ANN001
 
 
 def pipeline_files(r: PipelineRunResult) -> dict[str, str]:
-    return {
+    files = {
         "pipeline.json": dumps({"identity": r.pipeline_identity, "summary": r.summary}),
         "risk_decisions.jsonl": _jsonl(r.risk_decisions),
         "sizing_decisions.jsonl": _jsonl(r.sizing_decisions),
@@ -27,6 +27,9 @@ def pipeline_files(r: PipelineRunResult) -> dict[str, str]:
         "broker_fills.jsonl": _jsonl(r.broker_fills),
         "reconciliation.jsonl": _jsonl(r.reconciliations),
     }
+    if r.journal_ref is not None:  # Slice 8: link the final export to the incremental journal (content digest only)
+        files["journal_ref.json"] = dumps(r.journal_ref)
+    return files
 
 
 def write_pipeline_run(result: PipelineRunResult, root: Path | str) -> Path:
