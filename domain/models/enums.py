@@ -78,6 +78,12 @@ class TerminalState(str, Enum):
     CANCELLED = "CANCELLED"
     REJECTED_BY_BROKER = "REJECTED_BY_BROKER"
     RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
+    # Slice 8 (ADR-14, additive): explicit, distinguishable no-order outcomes. The original eight members and
+    # their meanings are unchanged; HOLD (a candidate whose action is HOLD) is NOT NO_CANDIDATE (no candidate).
+    HOLD = "HOLD"
+    NO_TRADE = "NO_TRADE"  # candidate existed but produced no order (e.g. SELL with nothing held, sizing no-trade)
+    SKIPPED_PENDING_ORDER = "SKIPPED_PENDING_ORDER"  # an earlier order for the instrument is still unfilled
+    REJECTED_INVALID_CANDIDATE = "REJECTED_INVALID_CANDIDATE"  # candidate failed validation
 
 
 class PromotionDecision(str, Enum):
