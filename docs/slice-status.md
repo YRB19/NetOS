@@ -98,3 +98,11 @@ pytest/ruff/mypy unavailable here, not run. **Remaining limits:** two checkpoint
 update vs `mark_portfolio_applied`) needed an idempotent-by-fill-id portfolio (now built, above); the original
 `OrderRequest` store needed by restore belongs to sizing/Slice 8; no exactly-once claim for any real broker; charge rates not
 independently verified in simulation; ADR-11 awaits operator ratification; risk thresholds remain unapproved examples.
+
+## Slice 8 — Decision Journal & Observability (2026-10-25)
+**Status: COMPLETE against the Slice 8 prompt (backend contract only); roadmap `NetOS_Post_Slice_7_Roadmap.md` was NOT in the workspace, so
+roadmap line-by-line acceptance is not certified. ADR-11 is still pending operator ratification (unchanged).** Implemented: ADR-14 durable
+hash-chained journal, required pipeline integration with pre-submission write, structured RR-check evidence, explicit HOLD/NO_TRADE/
+SKIPPED/INVALID decisions, read-only query/reconstruction, redaction, controlled error taxonomy, verify command. Docs: docs/decision-journal-observability.md.
+**Tests:** 787 unittest tests pass (738 verified baseline + 49 new). Import checker and `shared.arch_lint.cli`: 0 violations; compileall clean; pytest/ruff/mypy unavailable.
+**Limits:** see docs/decision-journal-observability.md §7. Slice 9 (statistical hardening) and Slice 10 (console) not started. Evidence class: synthetic infrastructure only.

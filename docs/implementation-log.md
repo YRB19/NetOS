@@ -153,3 +153,13 @@ unchanged for non-checkpointed use. **Tests:** `tests/unit/test_portfolio_settle
 that exactly exhausted cash as an "insufficient cash" case — a test error, fixed in the test; the code was correct. **Result:** 738 pass.
 **Docs:** §12a and ADR-13 added; simulated-broker cancellation text corrected to ADR-11; status updated. ADR-11 still pending operator ratification.
 Notion not updated (see delivery note); no Slice 8 work.
+
+## 2026-10-25 — Slice 8: Decision Journal & Observability (ADR-14)
+**Baseline (NetOS-slice-7-final.zip, no .git available - history/status unverifiable):** 738 unittest OK; import checker and arch_lint 0 violations; compileall clean.
+**Audit findings:** artifacts-only decision export; HOLD/no-trade had no DecisionRecord; `RiskCheckResult` held prose only (inputs/limits not
+recoverable); `observability/*` were scaffolds. **Changes:** `observability/decision_log/{events,journal,recorder,query,redaction,verify}.py`;
+`simulation/journaling.py`; runner wiring; `RiskCheckResult.evidence/evaluable` populated for every Risk Engine check; four additive `TerminalState`
+members; `FailureCategory.JOURNAL_FAILURE`; `OrderLifecycleManager.halt_external`; `journal_ref.json` artifact; existing pipeline tests use a
+test-only `JournaledHarness` that injects an explicit in-memory double. **Found/fixed during build:** str-mixin enums were stringified as `Cls.MEMBER`
+by redaction (normalisation now strips enums at every depth); reconciliation-required exits skipped the reconciliation event (now emitted).
+**Tests:** +49 (`tests/unit/test_decision_journal.py`, `tests/integration/test_decision_journal_pipeline.py`); 787 pass. No Slice 9/10 work.

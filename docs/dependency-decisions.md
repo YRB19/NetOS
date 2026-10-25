@@ -78,3 +78,14 @@ temp-file/fsync/`os.replace` convention as ADR-12, duplicated rather than import
 plus `simulation/settlement.apply_pending_fills`. Alternatives rejected: remembering processed fills only in the lifecycle manager (cannot know
 whether the portfolio effect was booked); a database or queue (not justified at this scale). One additive `FailureCategory`
 (`PORTFOLIO_CHECKPOINT_ERROR`). No new dependency. Limits: docs/order-state-machine-reconciliation.md §12a.
+
+**ADR-14 (architecture decision, Slice 8): durable hash-chained decision journal; additive contract changes only.**
+Problem: decisions were only exported at end of run (`decision_records.jsonl`), HOLD/no-trade/skipped outcomes had no canonical
+record, and `RiskCheckResult` kept only prose. Options: (a) rival decision model (rejected: Stage 3 §4 names one); (b) add fields to
+`DecisionRecord` (rejected: would change every existing artifact byte-for-byte and break reproducibility of old runs); (c) additive
+`TerminalState` members + typed journal events carrying the extension data (chosen). Decision: stdlib JSONL journal in
+`observability/decision_log/`, per-run stream, sequence + SHA-256 chain, fsync'd append, fail-closed reopen, required (not optional)
+in `PipelineHarness`; `RiskCheckResult.evidence`/`evaluable` captured at evaluation time; `FailureCategory.JOURNAL_FAILURE`;
+`OrderLifecycleManager.halt_external`. No new dependency, database or service. Consequences: every run needs a journal factory (existing
+tests use a test-only in-memory subclass); runs write `journal_ref.json`. Invalidated if multi-process writers are needed (would require a
+locking/transactional store) or if the operator rules a new field on `DecisionRecord` preferable (a migration reader is then required).
