@@ -31,6 +31,8 @@ class FailureCategory(str, Enum):  # noqa: UP042 - matches repository enum conve
     UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
     # Slice 7 final closure (additive): portfolio checkpoint could not be written / read / validated
     PORTFOLIO_CHECKPOINT_ERROR = "PORTFOLIO_CHECKPOINT_ERROR"
+    # Slice 8 (additive): a REQUIRED decision-journal write failed or no journal was supplied
+    JOURNAL_FAILURE = "JOURNAL_FAILURE"
 
 
 class RunStatus(str, Enum):  # noqa: UP042

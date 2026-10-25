@@ -11,7 +11,9 @@ from risk_execution.order_lifecycle import OrderLifecycleManager
 from simulation import PipelineHarness
 from tests.unit._pipeline_helpers import config, pipeline, tier2, universe, weekly_bars
 
-PH = PipelineHarness
+from tests.unit._pipeline_helpers import JournaledHarness  # noqa: E402
+
+PH = JournaledHarness
 
 
 def run(fraction=0.3):

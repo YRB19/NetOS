@@ -102,3 +102,14 @@ def tier2(fraction=0.3, **fcfg) -> tuple[Tier2Momentum12_1, MomentumFeatureBuild
     mc = MomentumConfig(**fcfg)
     strat = Tier2Momentum12_1(Tier2MomentumConfig(selection_fraction=fraction, features=mc))
     return strat, MomentumFeatureBuilder(mc)
+
+
+# ---- Slice 8: the real PipelineHarness REQUIRES a journal. Existing pipeline tests use this TEST-ONLY subclass,
+# which injects an explicit in-memory test double (never the production durable backend) when none is given.
+from observability.decision_log.journal import InMemoryJournal  # noqa: E402
+from simulation import PipelineHarness  # noqa: E402
+
+
+class JournaledHarness(PipelineHarness):
+    def run(self, *a, journal_factory=None, **kw):  # noqa: ANN002, ANN003
+        return super().run(*a, journal_factory=journal_factory or (lambda rid: InMemoryJournal(rid)), **kw)

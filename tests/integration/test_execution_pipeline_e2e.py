@@ -27,7 +27,9 @@ from tests.unit._pipeline_helpers import (
     ISINS, TEST_START, broker_config, config, pipeline, risk_config, sizing_config, tier2, universe, weekly_bars,
 )  # fmt: skip
 
-PH = PipelineHarness
+from tests.unit._pipeline_helpers import JournaledHarness  # noqa: E402
+
+PH = JournaledHarness
 
 
 def run_t2(pc_over=None, fraction=0.3, bars=None, cfg=None, **kw):
