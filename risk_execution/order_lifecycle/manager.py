@@ -256,6 +256,12 @@ class OrderLifecycleManager:
         self._halts.append(h)
         return h
 
+    def halt_external(self, code: str, detail: str, order_key: str | None = None) -> HaltRecord:
+        """Slice 8: a failure OUTSIDE the lifecycle (e.g. a required journal write after a possible submission)
+        blocks every further submission until an operator clears the halt. Recovery of the affected order
+        still goes through the existing broker lookup / reconciliation path."""
+        return self._halt(code, detail, order_key)
+
     def _log(self, rec: OrderRecord | None, ident: str | None, kind: str, status: str, detail: str,
              halt_id: str | None = None) -> None:
         ev = self._cur_ev
