@@ -39,6 +39,8 @@ class _Exposure:
     ceiling: int
     rr1_ok_detail: str
     rr2_ok_detail: str
+    rr1_evidence: tuple = ()
+    rr2_evidence: tuple = ()
 
 
 def _floor(x: Decimal) -> int:
@@ -96,10 +98,17 @@ class RiskEngine:
                             float(ceiling), (), rid)  # fmt: skip
 
     # --------------------------------------------------------------- checks
+    # Slice 8: every check records the exact observed inputs and configured limits it used as `evidence`
+    # (name, exact-string) pairs, captured at evaluation time. `detail` remains human prose.
+    @staticmethod
+    def _ev(**kv: object) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted((k, "None" if v is None else str(v)) for k, v in kv.items()))
+
     def _run_checks(self, c: object, ctx: RiskContext) -> tuple[list[RiskCheckResult], int]:
         if isinstance(c, CandidateTrade) and c.action is Action.HOLD:
             return [RiskCheckResult("RR-NO-EXECUTION", False,
-                                    "HOLD requests no execution; there is nothing to approve")], 0  # fmt: skip
+                                    "HOLD requests no execution; there is nothing to approve",
+                                    self._ev(action="HOLD"))], 0  # fmt: skip
         out: list[RiskCheckResult] = []
         out.append(self._guard("RR-CONFIG", lambda: self._chk_config()))
         out.append(self._guard("RR-8", lambda: self._chk_kill(ctx)))
@@ -118,36 +127,42 @@ class RiskEngine:
         except Exception as e:  # noqa: BLE001
             exposure_err = f"exposure could not be evaluated: {type(e).__name__}: {e}"
         if exposure is None:
-            out.append(RiskCheckResult("RR-1", False, exposure_err or "exposure unavailable"))
-            out.append(RiskCheckResult("RR-2", False, exposure_err or "exposure unavailable"))
+            ev = self._ev(error_type=exposure_err.split(":")[1].strip() if exposure_err else "unknown")
+            out.append(RiskCheckResult("RR-1", False, exposure_err or "exposure unavailable", ev, False))
+            out.append(RiskCheckResult("RR-2", False, exposure_err or "exposure unavailable", ev, False))
             return out, 0
-        out.append(self._res("RR-1", exposure.rr1_issues, exposure.rr1_ok_detail))
-        out.append(self._res("RR-2", exposure.rr2_issues, exposure.rr2_ok_detail))
+        out.append(self._res("RR-1", exposure.rr1_issues, exposure.rr1_ok_detail, exposure.rr1_evidence))
+        out.append(self._res("RR-2", exposure.rr2_issues, exposure.rr2_ok_detail, exposure.rr2_evidence))
         return out, exposure.ceiling
 
     @staticmethod
-    def _res(check_id: str, issues: tuple[str, ...], ok: str) -> RiskCheckResult:
-        return RiskCheckResult(check_id, not issues, "; ".join(issues) if issues else ok)
+    def _res(check_id: str, issues: tuple[str, ...], ok: str, evidence: tuple = ()) -> RiskCheckResult:
+        return RiskCheckResult(check_id, not issues, "; ".join(issues) if issues else ok, evidence)
 
     def _guard(self, check_id: str, fn: Callable[[], RiskCheckResult]) -> RiskCheckResult:
         try:
             return fn()
         except Exception as e:  # noqa: BLE001
-            return RiskCheckResult(check_id, False, f"could not be evaluated ({type(e).__name__}: {e})")
+            return RiskCheckResult(check_id, False, f"could not be evaluated ({type(e).__name__}: {e})",
+                                   self._ev(error_type=type(e).__name__), False)  # fmt: skip
 
     def _chk_config(self) -> RiskCheckResult:
+        ev = self._ev(label=getattr(self._config, "label", None), config_error_count=len(self._config_errors),
+                      risk_rule_version_id=self.risk_rule_version_id)  # fmt: skip
         if self._config_errors:
-            return RiskCheckResult("RR-CONFIG", False, "invalid risk config: " + "; ".join(self._config_errors))
-        return RiskCheckResult("RR-CONFIG", True, f"risk config valid ({self._config.label})")
+            return RiskCheckResult("RR-CONFIG", False, "invalid risk config: " + "; ".join(self._config_errors), ev)
+        return RiskCheckResult("RR-CONFIG", True, f"risk config valid ({self._config.label})", ev)
 
     def _chk_kill(self, ctx: RiskContext) -> RiskCheckResult:
         ks = ctx.kill_switch
+        ev = self._ev(kill_switch=getattr(ks, "value", ks), required="INACTIVE")
         if ks is KillSwitchState.INACTIVE:
-            return RiskCheckResult("RR-8", True, "kill switch INACTIVE")
-        return RiskCheckResult("RR-8", False, f"kill switch is {ks!r}; no execution may be approved")
+            return RiskCheckResult("RR-8", True, "kill switch INACTIVE", ev)
+        return RiskCheckResult("RR-8", False, f"kill switch is {ks!r}; no execution may be approved", ev)
 
     def _chk_boundary(self, ctx: RiskContext) -> RiskCheckResult:
         issues: list[str] = []
+        hash_ok = not (self._config_errors or self._hash is None) and self._config.rule_set_hash() == self._hash
         if self._config_errors or self._hash is None:
             issues.append("risk configuration not verifiable")
         elif self._config.rule_set_hash() != self._hash:
@@ -160,12 +175,15 @@ class RiskEngine:
         for ch in ctx.requested_changes:
             if str(ch.target).lower() in PROTECTED_TARGETS:
                 issues.append(f"attempt by {ch.requester!r} to alter protected item {ch.target!r}")
-        return self._res("RR-9", tuple(issues), "safety boundary intact (config hash + version verified, no change requests)")
+        ev = self._ev(config_hash_verified=hash_ok, engine_risk_rule_version_id=self.risk_rule_version_id,
+                      expected_risk_rule_version_id=ctx.expected_risk_rule_version_id,
+                      change_requests=len(ctx.requested_changes))  # fmt: skip
+        return self._res("RR-9", tuple(issues), "safety boundary intact (config hash + version verified, no change requests)", ev)
 
     def _chk_attribution(self, c: object, ctx: RiskContext) -> RiskCheckResult:
         issues: list[str] = []
         if not isinstance(c, CandidateTrade):
-            return RiskCheckResult("RR-7", False, "candidate is not a CandidateTrade")
+            return RiskCheckResult("RR-7", False, "candidate is not a CandidateTrade", self._ev(candidate_type=type(c).__name__))
         if not str(c.strategy_version_id or "").strip():
             issues.append("missing strategy_version_id")
         if not str(c.input_snapshot_id or "").strip():
@@ -180,52 +198,68 @@ class RiskEngine:
             issues.append("input_snapshot_id does not match this cycle's snapshot for the instrument")
         if ctx.evaluated_at is None or c.timestamp != ctx.evaluated_at:
             issues.append("candidate timestamp does not match evaluation cycle")
-        return self._res("RR-7", tuple(issues), "candidate attributable to strategy version, snapshot, run and config")
+        ev = self._ev(
+            strategy_version_id=c.strategy_version_id, candidate_input_snapshot_id=c.input_snapshot_id,
+            cycle_snapshot_id=(ctx.snapshot_ids or {}).get(c.instrument_id), candidate_timestamp=c.timestamp.isoformat(),
+            evaluated_at=ctx.evaluated_at.isoformat() if ctx.evaluated_at else None, research_run_id=ctx.research_run_id,
+            config_version_id=ctx.config_version_id, rationale_present=bool(str(c.rationale or "").strip()),
+        )  # fmt: skip
+        return self._res("RR-7", tuple(issues), "candidate attributable to strategy version, snapshot, run and config", ev)
 
     def _chk_universe(self, c: object, ctx: RiskContext) -> RiskCheckResult:
         if not isinstance(c, CandidateTrade):
-            return RiskCheckResult("RR-4", False, "candidate is not a CandidateTrade")
+            return RiskCheckResult("RR-4", False, "candidate is not a CandidateTrade", self._ev(candidate_type=type(c).__name__))
         u = ctx.permitted_instrument_ids
+        base = dict(instrument_id=c.instrument_id, action=c.action.value, universe_size=len(u) if u else 0,
+                    universe_version=ctx.universe_version,
+                    allow_exit_of_removed_instruments=self._config.allow_exit_of_removed_instruments)  # fmt: skip
         if not u:
-            return RiskCheckResult("RR-4", False, "permitted universe missing or empty")
+            return RiskCheckResult("RR-4", False, "permitted universe missing or empty", self._ev(**base, in_universe=False))
         if c.instrument_id in u:
-            return RiskCheckResult("RR-4", True, f"{c.instrument_id} is in the permitted universe")
+            return RiskCheckResult("RR-4", True, f"{c.instrument_id} is in the permitted universe", self._ev(**base, in_universe=True))
         if c.action is Action.SELL and self._config.allow_exit_of_removed_instruments:
             held = ctx.portfolio is not None and ctx.portfolio.position_for(c.instrument_id) is not None
             if held:
-                return RiskCheckResult("RR-4", True, f"exit of held instrument {c.instrument_id} removed from universe (allowed by config)")
-        return RiskCheckResult("RR-4", False, f"{c.instrument_id} is outside the permitted universe")
+                return RiskCheckResult("RR-4", True, f"exit of held instrument {c.instrument_id} removed from universe (allowed by config)",
+                                       self._ev(**base, in_universe=False, held=True))  # fmt: skip
+        return RiskCheckResult("RR-4", False, f"{c.instrument_id} is outside the permitted universe", self._ev(**base, in_universe=False))
 
     def _chk_scope(self, ctx: RiskContext) -> RiskCheckResult:
+        ev = self._ev(account_scope=ctx.account_scope, permitted_account_scope=self._config.permitted_account_scope)
         if not ctx.account_scope:
-            return RiskCheckResult("RR-6", False, "account scope missing")
+            return RiskCheckResult("RR-6", False, "account scope missing", ev)
         if ctx.account_scope != self._config.permitted_account_scope:
-            return RiskCheckResult("RR-6", False, f"account scope {ctx.account_scope!r} is not the permitted scope {self._config.permitted_account_scope!r}")
-        return RiskCheckResult("RR-6", True, f"account scope {ctx.account_scope!r} permitted")
+            return RiskCheckResult("RR-6", False, f"account scope {ctx.account_scope!r} is not the permitted scope {self._config.permitted_account_scope!r}", ev)
+        return RiskCheckResult("RR-6", True, f"account scope {ctx.account_scope!r} permitted", ev)
 
     def _chk_drawdown(self, c: object, ctx: RiskContext) -> RiskCheckResult:
         if not isinstance(c, CandidateTrade):
-            return RiskCheckResult("RR-3", False, "candidate is not a CandidateTrade")
+            return RiskCheckResult("RR-3", False, "candidate is not a CandidateTrade", self._ev(candidate_type=type(c).__name__))
         if c.action is not Action.BUY:
-            return RiskCheckResult("RR-3", True, "drawdown halt applies to BUY only; not applicable")
+            return RiskCheckResult("RR-3", True, "drawdown halt applies to BUY only; not applicable", self._ev(action=c.action.value, applicable=False))
         eq, pk = ctx.equity, ctx.peak_equity
+        base = dict(equity=eq, peak_equity=pk, max_drawdown_fraction=self._config.max_drawdown_fraction,
+                    drawdown_halt_latched=ctx.drawdown_halt_latched, applicable=True)  # fmt: skip
         if eq is None or pk is None or not (pk > 0) or eq < 0:
-            return RiskCheckResult("RR-3", False, "equity/peak equity unavailable; cannot establish drawdown")
+            return RiskCheckResult("RR-3", False, "equity/peak equity unavailable; cannot establish drawdown", self._ev(**base), False)
         dd = (pk - eq) / pk
+        ev = self._ev(**base, drawdown=dd)
         if ctx.drawdown_halt_latched:
-            return RiskCheckResult("RR-3", False, f"drawdown halt is latched (current drawdown {dd:.4f})")
+            return RiskCheckResult("RR-3", False, f"drawdown halt is latched (current drawdown {dd:.4f})", ev)
         if dd >= Decimal(self._config.max_drawdown_fraction):
-            return RiskCheckResult("RR-3", False, f"drawdown {dd:.4f} >= limit {self._config.max_drawdown_fraction}; new BUY vetoed")
-        return RiskCheckResult("RR-3", True, f"drawdown {dd:.4f} below limit {self._config.max_drawdown_fraction}")
+            return RiskCheckResult("RR-3", False, f"drawdown {dd:.4f} >= limit {self._config.max_drawdown_fraction}; new BUY vetoed", ev)
+        return RiskCheckResult("RR-3", True, f"drawdown {dd:.4f} below limit {self._config.max_drawdown_fraction}", ev)
 
     def _chk_rate(self, ctx: RiskContext) -> RiskCheckResult:
+        base = dict(window_seconds=self._config.order_rate_window_seconds, max_orders_per_window=self._config.max_orders_per_window)
         if ctx.recent_order_timestamps is None or ctx.evaluated_at is None:
-            return RiskCheckResult("RR-5", False, "order history unavailable; cannot apply order-rate limit")
+            return RiskCheckResult("RR-5", False, "order history unavailable; cannot apply order-rate limit", self._ev(**base), False)
         lo = ctx.evaluated_at - timedelta(seconds=self._config.order_rate_window_seconds)
         n = sum(1 for t in ctx.recent_order_timestamps if lo < t <= ctx.evaluated_at)
+        ev = self._ev(**base, orders_in_window=n)
         if n >= self._config.max_orders_per_window:
-            return RiskCheckResult("RR-5", False, f"{n} orders in the last {self._config.order_rate_window_seconds}s >= limit {self._config.max_orders_per_window}")
-        return RiskCheckResult("RR-5", True, f"{n} orders in window < limit {self._config.max_orders_per_window}")
+            return RiskCheckResult("RR-5", False, f"{n} orders in the last {self._config.order_rate_window_seconds}s >= limit {self._config.max_orders_per_window}", ev)
+        return RiskCheckResult("RR-5", True, f"{n} orders in window < limit {self._config.max_orders_per_window}", ev)
 
     # ------------------------------------------------------------- exposure
     def _analyze(self, c: object, ctx: RiskContext) -> _Exposure:
@@ -262,8 +296,10 @@ class RiskEngine:
         if c.action is Action.SELL:
             avail = int(held.get(c.instrument_id, ZERO)) - sell_q.get(c.instrument_id, 0)
             issues = () if avail >= 1 else (f"no sellable position in {c.instrument_id} (available {avail})",)
+            ev = self._ev(action="SELL", instrument_id=c.instrument_id, held_quantity=held.get(c.instrument_id, ZERO),
+                          pending_sell_quantity=sell_q.get(c.instrument_id, 0), sellable=avail, equity=eq)  # fmt: skip
             return _Exposure(issues, (), max(avail, 0),
-                             f"SELL reduces exposure; sellable {avail}", "SELL does not add leverage")  # fmt: skip
+                             f"SELL reduces exposure; sellable {avail}", "SELL does not add leverage", ev, ev)  # fmt: skip
         if c.action is not Action.BUY:
             raise ValueError(f"unsupported action {c.action!r}")
 
@@ -294,6 +330,11 @@ class RiskEngine:
         if lev_head < 1:
             rr2.append("no leverage headroom for one share")
         ceiling = max(min(pos_head, gross_head, lev_head), 0)
+        common = dict(action="BUY", instrument_id=c.instrument_id, equity=eq, gross_exposure=gross,
+                      reference_price=p, size_hint=hd, target_notional=target, incremental_notional=incr)  # fmt: skip
+        ev1 = self._ev(**common, max_position_fraction=max_pos, max_gross_exposure_fraction=max_gross,
+                       position_headroom_shares=pos_head, gross_headroom_shares=gross_head)  # fmt: skip
+        ev2 = self._ev(**common, max_leverage=max_lev, leverage_headroom_shares=lev_head)
         return _Exposure(tuple(rr1), tuple(rr2), ceiling,
                          f"within exposure limits; ceiling {ceiling} shares",
-                         f"leverage within limit {max_lev}")  # fmt: skip
+                         f"leverage within limit {max_lev}", ev1, ev2)  # fmt: skip

@@ -21,10 +21,21 @@ class RiskCheckResult:
     check_id: str  # e.g. "RR-1"
     passed: bool
     detail: str  # human-readable explanation, always present (even on pass)
+    # Slice 8 (additive, defaulted): the exact observed inputs and configured limits used by this check,
+    # captured AT EVALUATION TIME as (name, exact-string-value) pairs. `detail` stays human prose and is not
+    # a substitute. An empty tuple means "evidence was not captured" and must never be reconstructed later.
+    evidence: tuple[tuple[str, str], ...] = ()
+    evaluable: bool = True  # False: the check could not be evaluated (fail closed; passed is then False)
 
     def __post_init__(self) -> None:
         require_non_empty_str(self.check_id, "check_id")
         require_non_empty_str(self.detail, "detail")
+        if not isinstance(self.evidence, tuple) or not all(
+            isinstance(p, tuple) and len(p) == 2 and all(isinstance(x, str) for x in p) for p in self.evidence
+        ):
+            raise ValueError("evidence must be a tuple of (str, str) pairs")
+        if not self.evaluable and self.passed:
+            raise ValueError("a check that could not be evaluated cannot be recorded as passed")
 
 
 @dataclass(frozen=True, slots=True)
