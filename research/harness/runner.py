@@ -35,6 +35,7 @@ from domain.models.order_request import Fill
 from domain.models.research_artifacts import EvaluationRun, Experiment
 from domain.models.trade import CandidateTrade
 from research.contamination import guards
+from research.contamination.point_in_time import AvailabilityLedger, PointInTimeReplay
 from research.harness.config import (
     HARNESS_VERSION,
     EvaluationPeriod,
@@ -135,7 +136,14 @@ class ResearchHarness:
     credentials and no governance handle.
     """
 
-    def __init__(self, cost_registry: ScheduleRegistry | None = None) -> None:
+    def __init__(
+        self,
+        cost_registry: ScheduleRegistry | None = None,
+        availability: AvailabilityLedger | None = None,
+    ) -> None:
+        # Slice 9 (ADR-16): optional point-in-time availability ledger. When supplied, every
+        # read of market data is gated by evidenced availability time, not just event time.
+        self._availability = availability
         self._registry = cost_registry if cost_registry is not None else default_registry()
         self._cost_model = CostModel(self._registry)
 
@@ -153,6 +161,10 @@ class ResearchHarness:
         baselines = tuple(baseline_strategy_version_ids or (strategy_version_id,))
         try:
             data_version = compute_market_data_snapshot_version(list(market_data))
+            if self._availability is not None:
+                data_version = "pit_" + hash_json_stable(
+                    [data_version, self._availability.fingerprint()]
+                )[:32]
         except Exception:
             data_version = "UNAVAILABLE"
         uni_sched = _safe_universe_schedule(universe_schedule)
@@ -258,7 +270,16 @@ class ResearchHarness:
 
         # ---- data & universe ----------------------------------------------
         timeline = UniverseTimeline(list(universes))
-        replay = HistoricalReplay(market_data)
+        if self._availability is not None:
+            replay = PointInTimeReplay(self._availability)
+            report["point_in_time"] = self._availability.report()
+        else:
+            replay = HistoricalReplay(market_data)
+            report["point_in_time"] = {
+                "status": "UNVERIFIABLE",
+                "reason": "no source-availability provenance supplied; event time only is enforced",
+                "clean_point_in_time_claim": False,
+            }
         replay.require_instruments(timeline.all_instrument_ids())
         cycles = replay.decision_timestamps(w_start, w_end)
         if not cycles:
