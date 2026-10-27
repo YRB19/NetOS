@@ -106,3 +106,10 @@ hash-chained journal, required pipeline integration with pre-submission write, s
 SKIPPED/INVALID decisions, read-only query/reconstruction, redaction, controlled error taxonomy, verify command. Docs: docs/decision-journal-observability.md.
 **Tests:** 787 unittest tests pass (738 verified baseline + 49 new). Import checker and `shared.arch_lint.cli`: 0 violations; compileall clean; pytest/ruff/mypy unavailable.
 **Limits:** see docs/decision-journal-observability.md §7. Slice 9 (statistical hardening) and Slice 10 (console) not started. Evidence class: synthetic infrastructure only.
+
+## Slice 9 — Research Validity & Statistical Hardening (2026-10-26)
+**Status: COMPLETE against the Slice 9 prompt for synthetic infrastructure; roadmap file not in workspace, so roadmap line-by-line acceptance is not certified.**
+Implemented: frozen versioned protocol + registry, hash-chained trial ledger, holdout exposure registry, point-in-time availability/revision gating (optional in harness),
+walk-forward + purge/embargo, CSCV/PBO, regime segmentation (trend/volatility; liquidity UNSUPPORTED), extended metrics incl. separate terminal-liquidation estimate,
+dataset-quality/survivorship warnings, validity report + reproduction check. Docs: docs/statistical-validation.md. **Tests:** 837 pass (787 + 50); import checker/arch_lint 0 violations;
+pytest/ruff/mypy unavailable. **Limits:** see statistical-validation.md §10. No profitability claim is made. Slice 10 not started.

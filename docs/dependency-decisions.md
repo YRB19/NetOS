@@ -89,3 +89,9 @@ in `PipelineHarness`; `RiskCheckResult.evidence`/`evaluable` captured at evaluat
 `OrderLifecycleManager.halt_external`. No new dependency, database or service. Consequences: every run needs a journal factory (existing
 tests use a test-only in-memory subclass); runs write `journal_ref.json`. Invalidated if multi-process writers are needed (would require a
 locking/transactional store) or if the operator rules a new field on `DecisionRecord` preferable (a migration reader is then required).
+
+**ADR-15 (Slice 9): protocol, trial ledger and holdout registry are separate append-only/write-once stores under `research/`.** Problem: free-text pre-registration did not freeze a protocol or count attempts. Chosen: hash-frozen `ExperimentProtocol`, hash-chained trial ledger, holdout identity independent of protocol. Rejected: editing protocols in place; a database. Invalidated by multi-writer needs.
+**ADR-16: point-in-time availability is a sidecar provenance contract, not a `MarketData` field.** Avoids changing hashes/old artifacts; `ingestion_time` is never promoted to availability; UNKNOWN is never backfilled. Invalidated if the operator wants the field on `MarketData` (migration reader needed).
+**ADR-17: purge/embargo and walk-forward are explicit, documented plans; re-fitting is UNSUPPORTED until a fit contract exists.**
+**ADR-18: CSCV/PBO, regimes and quality warnings return typed UNSUPPORTED/INSUFFICIENT_SAMPLE instead of defaults; regime thresholds are required inputs.**
+**ADR-19: extended metrics and terminal liquidation are additive; booked costs and hypothetical liquidation are never merged; execution assumptions are disclosed (UNMODELLED/ASSUMED_UNVERIFIED).** No new dependency.

@@ -30,3 +30,7 @@ recorded in the artifact. The harness refuses (FAILED artifact) rather than gues
    implemented, so no claim of skill may rest on this harness alone.
 6. Re-run reproducibility check: same inputs ⇒ identical deterministic artifact digest
    (`digest_of_run_dir`).
+
+## Slice 9 addendum
+Free-text pre-registration is superseded for confirmatory runs by `ExperimentProtocol` (docs/statistical-validation.md §1): frozen, hashed, registered before
+evaluation, structured criteria only. Exploratory runs are labelled; a reused holdout is never confirmatory.

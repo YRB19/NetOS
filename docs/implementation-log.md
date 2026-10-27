@@ -163,3 +163,13 @@ members; `FailureCategory.JOURNAL_FAILURE`; `OrderLifecycleManager.halt_external
 test-only `JournaledHarness` that injects an explicit in-memory double. **Found/fixed during build:** str-mixin enums were stringified as `Cls.MEMBER`
 by redaction (normalisation now strips enums at every depth); reconciliation-required exits skipped the reconciliation event (now emitted).
 **Tests:** +49 (`tests/unit/test_decision_journal.py`, `tests/integration/test_decision_journal_pipeline.py`); 787 pass. No Slice 9/10 work.
+
+## 2026-10-26 — Slice 9: Research Validity & Statistical Hardening (ADR-15..19)
+**Baseline (uploaded NetOS.zip, git history present, clean tree):** 787 unittest OK; import checker and `shared.arch_lint.cli` 0 violations; compileall clean; pytest/ruff/mypy unavailable.
+**Roadmap `NetOS_Post_Slice_7_Roadmap.md` was not in the workspace**; requirements taken from the Slice 9 prompt, roadmap acceptance not certified.
+**Added (all new modules except one optional runner hook):** `research/protocol/` (frozen protocol + registry), `research/trials/` (hash-chained trial ledger, holdout registry),
+`research/contamination/point_in_time.py` (availability ledger/replay; optional `ResearchHarness(availability=...)`, contamination report gains `point_in_time`),
+`research/splits/plan.py` (walk-forward, purge/embargo), `research/stats/{pbo,regimes}.py`, `research/validity/{assumptions,metrics,quality,evaluation}.py`, `docs/statistical-validation.md`.
+**Design choices:** availability is a sidecar contract, not a `MarketData` field (no hash/artifact drift); research cannot import the journal so links are string references; terminal liquidation is a separate estimate; no thresholds invented.
+**Found/fixed during build:** purge cutoff logic initially clamped to train end (test caught it); my first walk-forward window counts forgot the inclusive data_end rule.
+**Tests:** +50 (`tests/unit/test_slice9_validity.py`, hand-calculated PBO, purge, drawdown, volatility, entry/terminal costs under V1/V2); 837 pass. Synthetic evidence only. No Slice 10 work.

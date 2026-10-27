@@ -177,3 +177,9 @@ UNEXPECTED_ERROR.
 * `strategy_configured_through=None` is accepted (e.g. zero-parameter Tier-1) and recorded as
   `strategy_configuration_declared: false` — it is a declaration, not a verification.
 * Only the Tier-1 baseline and test-only strategies have been run, on synthetic data.
+
+## Slice 9 update
+Optional `ResearchHarness(availability=AvailabilityLedger)` enforces availability-time gating; contamination report includes `point_in_time`
+(`UNVERIFIABLE` when no ledger). The "ingestion_time not used / no PBO / no regime / no walk-forward / exit costs not included" limitations above are
+partly closed by the Slice 9 modules (see docs/statistical-validation.md); remaining: no verified historical data, no slippage/liquidity model,
+no re-fitting, no significance testing, no liquidity regimes.
