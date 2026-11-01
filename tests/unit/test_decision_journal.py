@@ -96,13 +96,26 @@ class AppendSemantics(unittest.TestCase):
     def test_required_payload_keys_enforced(self):
         j = InMemoryJournal("r", CLOCK)
         with self.assertRaises(JournalError) as cm:
-            j.append(EventType.FILL_RECORDED, "e", {"fill_id": "f"}, correlation_id="c", producer="p", producer_version="1")
+            j.append(
+                EventType.FILL_RECORDED,
+                "e",
+                {"fill_id": "f"},
+                correlation_id="c",
+                producer="p",
+                producer_version="1",
+            )
         self.assertIs(cm.exception.code, ErrorCode.JOURNAL_INVALID_EVENT)
 
     def test_times_are_distinct_and_unknown_stays_unknown(self):
         j = InMemoryJournal("r", lambda: datetime(2026, 2, 2, tzinfo=UTC))
-        e = j.append(EventType.OPERATIONAL_FAILURE, "e", {"error_code": "X", "message": "m"},
-                     correlation_id="c", producer="p", producer_version="1")  # no event_time / data_available_at
+        e = j.append(
+            EventType.OPERATIONAL_FAILURE,
+            "e",
+            {"error_code": "X", "message": "m"},
+            correlation_id="c",
+            producer="p",
+            producer_version="1",
+        )  # no event_time / data_available_at
         self.assertIsNone(e.event_time)
         self.assertIsNone(e.data_available_at)
         self.assertTrue(e.recorded_at.startswith("2026-02-02"))
@@ -113,8 +126,14 @@ class AppendSemantics(unittest.TestCase):
         j = FileDecisionJournal(self.d, "r", CLOCK)
         orig = put(j, 1)
         before = journal_path(self.d, "r").read_text().splitlines()[0]
-        j.append(EventType.CORRECTION, "evt_c", {"corrects_event_id": orig.event_id, "reason": "typo"},
-                 correlation_id="c", producer="t", producer_version="1")
+        j.append(
+            EventType.CORRECTION,
+            "evt_c",
+            {"corrects_event_id": orig.event_id, "reason": "typo"},
+            correlation_id="c",
+            producer="t",
+            producer_version="1",
+        )
         self.assertEqual(journal_path(self.d, "r").read_text().splitlines()[0], before)
         self.assertEqual(len(j.events()), 2)
 
@@ -169,7 +188,9 @@ class CorruptionDetection(unittest.TestCase):
         self.assertIn("JOURNAL_CORRUPT", self.codes(raw))
 
     def test_duplicate_event_id(self):
-        self.assertIn("JOURNAL_DUPLICATE_EVENT_ID", self.codes("\n".join(self.lines + [self.lines[0]]) + "\n"))
+        self.assertIn(
+            "JOURNAL_DUPLICATE_EVENT_ID", self.codes("\n".join(self.lines + [self.lines[0]]) + "\n")
+        )
 
     def test_reopen_of_corrupt_journal_fails_closed_without_repair(self):
         raw = ("\n".join(self.lines) + "\n").encode()[:-25]
@@ -198,8 +219,12 @@ class VerifyCommand(unittest.TestCase):
         j = FileDecisionJournal(d, "r", CLOCK)
         put(j, 1), put(j, 2)
         root = Path(__file__).resolve().parents[2]
-        run = lambda: subprocess.run([sys.executable, "-m", "observability.decision_log.verify", d, "r"],  # noqa: E731
-                                     capture_output=True, text=True, cwd=root)
+        run = lambda: subprocess.run(
+            [sys.executable, "-m", "observability.decision_log.verify", d, "r"],  # noqa: E731
+            capture_output=True,
+            text=True,
+            cwd=root,
+        )
         self.assertEqual(run().returncode, 0)
         p = journal_path(d, "r")
         p.write_bytes(p.read_bytes()[:-10])
@@ -257,11 +282,22 @@ class QueryLayer(unittest.TestCase):
         import sys
 
         public = {n for n in dir(JournalReader) if not n.startswith("_")}
-        self.assertFalse({n for n in public if n.startswith(("append", "write", "delete", "update", "set", "resolve", "submit"))})
+        self.assertFalse(
+            {
+                n
+                for n in public
+                if n.startswith(("append", "write", "delete", "update", "set", "resolve", "submit"))
+            }
+        )
         code = ("import sys; import observability.decision_log.query;"
                 "bad=[m for m in sys.modules if m.split('.')[0] in ('risk_execution','simulation','intelligence','governance')];"
                 "print(bad)")  # fmt: skip
-        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=Path(__file__).resolve().parents[2])
+        out = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[2],
+        )
         self.assertEqual(out.stdout.strip(), "[]", out.stderr)
 
 

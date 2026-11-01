@@ -82,7 +82,9 @@ class GroupA_StateMachine(unittest.TestCase):
         rec = r.mgr.record(req.idempotency_key)
         self.assertIs(rec.order.state, S.CANCELLED)
         self.assertEqual(rec.filled_qty, 40)
-        self.assertEqual([h.to_state for h in rec.order.state_history][-2:], [S.PARTIALLY_FILLED, S.CANCELLED])
+        self.assertEqual(
+            [h.to_state for h in rec.order.state_history][-2:], [S.PARTIALLY_FILLED, S.CANCELLED]
+        )
 
     def test_cancel_request_is_not_evidence_of_cancellation(self):
         r = Rig(max_fill_fraction_per_bar=Decimal("0.4"))
@@ -91,7 +93,9 @@ class GroupA_StateMachine(unittest.TestCase):
             r.mgr.apply_event(ev)
         rec = r.mgr.request_cancel(req.idempotency_key, r.broker, r.session)
         self.assertTrue(rec.cancel_requested)
-        self.assertIs(rec.order.state, S.PARTIALLY_FILLED)  # only a CANCEL_CONFIRMED event changes state
+        self.assertIs(
+            rec.order.state, S.PARTIALLY_FILLED
+        )  # only a CANCEL_CONFIRMED event changes state
 
     def test_failed_or_timed_out_cancel_request_proves_nothing(self):
         r = Rig()
@@ -100,14 +104,22 @@ class GroupA_StateMachine(unittest.TestCase):
         self.assertIs(rec.order.state, S.ACKNOWLEDGED)
         self.assertTrue(rec.cancel_requested)
         self.assertTrue(any(e["status"] == "UNCONFIRMED" for e in rec.event_log))
-        self.assertIs(r.broker.get_order_status(r.session, rec.order.broker_order_id).state, S.ACKNOWLEDGED)
+        self.assertIs(
+            r.broker.get_order_status(r.session, rec.order.broker_order_id).state, S.ACKNOWLEDGED
+        )
 
     def test_cancel_request_on_unfilled_order_does_not_itself_change_state(self):
         r = Rig()
         req, _, sub = r.submit()
-        rec = r.mgr.request_cancel(req.idempotency_key, r.broker, r.session)   # broker really cancels
-        self.assertIs(rec.order.state, S.ACKNOWLEDGED)                          # ...we still wait for the EVENT
-        res = r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key))
+        rec = r.mgr.request_cancel(
+            req.idempotency_key, r.broker, r.session
+        )  # broker really cancels
+        self.assertIs(rec.order.state, S.ACKNOWLEDGED)  # ...we still wait for the EVENT
+        res = r.mgr.apply_event(
+            BrokerEvent(
+                EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key
+            )
+        )
         self.assertIs(res.status, EventStatus.APPLIED)
         self.assertIs(rec.order.state, S.CANCELLED)
         self.assertEqual(rec.filled_qty, 0)
@@ -115,7 +127,9 @@ class GroupA_StateMachine(unittest.TestCase):
     def test_fill_after_cancel_request_but_before_confirmation_is_applied(self):
         r = Rig()
         req, _, _ = r.submit()
-        r.mgr.request_cancel(req.idempotency_key, _NoCancelAdapter(r.broker), r.session)   # request not honoured yet
+        r.mgr.request_cancel(
+            req.idempotency_key, _NoCancelAdapter(r.broker), r.session
+        )  # request not honoured yet
         for ev in r.fill_events(r.advance(1)):
             self.assertIs(r.mgr.apply_event(ev).status, EventStatus.APPLIED)
         self.assertIs(r.mgr.record(req.idempotency_key).order.state, S.FILLED)
@@ -124,22 +138,33 @@ class GroupA_StateMachine(unittest.TestCase):
         r = Rig()
         req, _, sub = r.submit()
         bid, k = sub.record.order.broker_order_id, req.idempotency_key
-        self.assertIs(r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k)).status, EventStatus.APPLIED)
+        self.assertIs(
+            r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k)).status,
+            EventStatus.APPLIED,
+        )
         for eid in (None, "c2", "c3"):
-            self.assertIs(r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k, event_id=eid)).status,
-                          EventStatus.DUPLICATE_IGNORED)
+            self.assertIs(
+                r.mgr.apply_event(
+                    BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k, event_id=eid)
+                ).status,
+                EventStatus.DUPLICATE_IGNORED,
+            )
         self.assertFalse(r.mgr.halted)
 
     def test_late_fill_after_confirmed_cancel_of_unfilled_order_is_quarantined(self):
         r = Rig()
         req, _, sub = r.submit()
         k = req.idempotency_key
-        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, k))
+        r.mgr.apply_event(
+            BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, k)
+        )
         res = r.mgr.apply_event(fill_event(k, synthetic_fill(k, 100, 50, FillType.FULL)))
         rec = r.mgr.record(k)
         self.assertIs(res.status, EventStatus.QUARANTINED)
         self.assertIs(rec.order.state, S.CANCELLED)
-        self.assertEqual((rec.filled_qty, rec.consideration), (0, Decimal(0)))   # no financial effect applied
+        self.assertEqual(
+            (rec.filled_qty, rec.consideration), (0, Decimal(0))
+        )  # no financial effect applied
         self.assertTrue(r.mgr.halted)
 
     def test_cancel_and_fill_arriving_in_either_order_never_double_apply(self):
@@ -152,9 +177,9 @@ class GroupA_StateMachine(unittest.TestCase):
                 second = fill_event(k, synthetic_fill(k, 40, 50, fid="f2"))
                 cancel = BrokerEvent(EventKind.CANCEL_CONFIRMED, bid, k)
                 r.mgr.apply_event(first)
-                for ev in ((cancel, second) if cancel_first else (second, cancel)):
+                for ev in (cancel, second) if cancel_first else (second, cancel):
                     r.mgr.apply_event(ev)
-                for ev in (first, second, cancel):          # then everything is re-delivered
+                for ev in (first, second, cancel):  # then everything is re-delivered
                     r.mgr.apply_event(ev)
                 rec = r.mgr.record(k)
                 self.assertEqual(rec.filled_qty, 40 if cancel_first else 80)
@@ -175,13 +200,17 @@ class GroupA_StateMachine(unittest.TestCase):
         req, _, sub = r.submit()
         for ev in r.fill_events(r.advance(1)):
             r.mgr.apply_event(ev)
-        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key))
+        r.mgr.apply_event(
+            BrokerEvent(
+                EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key
+            )
+        )
         late = fill_event(req.idempotency_key, synthetic_fill(req.idempotency_key, 10, 50))
         res = r.mgr.apply_event(late)
         rec = r.mgr.record(req.idempotency_key)
         self.assertIs(res.status, EventStatus.QUARANTINED)
-        self.assertIs(rec.order.state, S.CANCELLED)       # terminal state not reopened
-        self.assertEqual(rec.filled_qty, 40)               # accounting unchanged
+        self.assertIs(rec.order.state, S.CANCELLED)  # terminal state not reopened
+        self.assertEqual(rec.filled_qty, 40)  # accounting unchanged
         self.assertTrue(r.mgr.halted)
         self.assertEqual(len(rec.quarantined), 1)
 
@@ -192,7 +221,11 @@ class GroupA_StateMachine(unittest.TestCase):
         req, _, sub = r.submit()
         for ev in r.fill_events(r.advance(1)):
             r.mgr.apply_event(ev)
-        res = r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key))
+        res = r.mgr.apply_event(
+            BrokerEvent(
+                EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key
+            )
+        )
         self.assertIs(res.status, EventStatus.QUARANTINED)
         self.assertIs(r.mgr.record(req.idempotency_key).order.state, S.FILLED)
         self.assertEqual(r.mgr.record(req.idempotency_key).filled_qty, 100)
@@ -201,6 +234,7 @@ class GroupA_StateMachine(unittest.TestCase):
         r = Rig()
         rd = decision()
         from domain.models.order_request import OrderRequest
+
         # LIMIT orders are rejected by the simulator (broker-side rejection)
         req = OrderRequest(A, Action.BUY, 10.0, OrderType.LIMIT, rd.risk_decision_id, 50.0)
         sub = r.mgr.submit(req, rd, r.broker, r.session)
@@ -217,10 +251,11 @@ class GroupA_StateMachine(unittest.TestCase):
         r.broker.set_simulated_time(T0)
         # a session the broker refuses structurally -> BrokerRequestError (no order created)
         from risk_execution.broker.interface import BrokerSession
+
         bad = BrokerSession("x", "y", False)
         sub = r.mgr.submit(req, rd, r.broker, bad)
         self.assertIs(sub.outcome, SubmitOutcome.LOCAL_FAILURE)
-        self.assertIs(sub.record.order.state, S.APPROVED)           # never SUBMITTED
+        self.assertIs(sub.record.order.state, S.APPROVED)  # never SUBMITTED
         self.assertEqual(r.broker.order_statuses(r.session), {})
         again = r.mgr.submit(req, rd, r.broker, r.session)
         self.assertIs(again.outcome, SubmitOutcome.DUPLICATE_NOT_RESENT)
@@ -240,7 +275,9 @@ class GroupA_StateMachine(unittest.TestCase):
         req, _, sub = r.submit()
         for ev in r.fill_events(r.advance(1)):
             r.mgr.apply_event(ev)
-        res = r.mgr.apply_event(BrokerEvent(EventKind.REJECTED, sub.record.order.broker_order_id, req.idempotency_key))
+        res = r.mgr.apply_event(
+            BrokerEvent(EventKind.REJECTED, sub.record.order.broker_order_id, req.idempotency_key)
+        )
         rec = r.mgr.record(req.idempotency_key)
         self.assertIs(res.status, EventStatus.QUARANTINED)
         self.assertIs(rec.order.state, S.RECONCILIATION_REQUIRED)
@@ -252,7 +289,9 @@ class GroupA_StateMachine(unittest.TestCase):
         for ev in r.fill_events(r.advance(1)):
             r.mgr.apply_event(ev)
         before = r.mgr.record(req.idempotency_key).filled_qty
-        r.mgr.apply_event(BrokerEvent(EventKind.REJECTED, sub.record.order.broker_order_id, req.idempotency_key))
+        r.mgr.apply_event(
+            BrokerEvent(EventKind.REJECTED, sub.record.order.broker_order_id, req.idempotency_key)
+        )
         self.assertEqual(r.mgr.record(req.idempotency_key).filled_qty, before)
         self.assertIs(r.mgr.record(req.idempotency_key).order.state, S.FILLED)
 
@@ -319,13 +358,17 @@ class GroupB_Idempotency(unittest.TestCase):
         again = r.mgr.submit(req, rd, r.broker, r.session)
         self.assertIs(again.outcome, SubmitOutcome.DUPLICATE_NOT_RESENT)
         self.assertEqual(len(r.broker.order_statuses(r.session)), 1)
-        self.assertEqual(r.broker.duplicate_submissions, 0)  # the adapter was never even asked twice
+        self.assertEqual(
+            r.broker.duplicate_submissions, 0
+        )  # the adapter was never even asked twice
         self.assertIs(again.record, first.record)
 
     def test_duplicate_ack_is_ignored(self):
         r = Rig()
         req, _, sub = r.submit()
-        ev = BrokerEvent(EventKind.ACKNOWLEDGED, sub.record.order.broker_order_id, req.idempotency_key)
+        ev = BrokerEvent(
+            EventKind.ACKNOWLEDGED, sub.record.order.broker_order_id, req.idempotency_key
+        )
         self.assertIs(r.mgr.apply_event(ev).status, EventStatus.DUPLICATE_IGNORED)
         self.assertFalse(r.mgr.halted)
 
@@ -352,7 +395,9 @@ class GroupB_Idempotency(unittest.TestCase):
         req, _, _ = r.submit()
         k = req.idempotency_key
         r.mgr.apply_event(fill_event(k, synthetic_fill(k, 40, 50, fid="fill_x")))
-        res = r.mgr.apply_event(fill_event(k, synthetic_fill(k, 40, 51, fid="fill_x"), event_id="redelivery"))
+        res = r.mgr.apply_event(
+            fill_event(k, synthetic_fill(k, 40, 51, fid="fill_x"), event_id="redelivery")
+        )
         self.assertIs(res.status, EventStatus.ESCALATED)
         self.assertTrue(r.mgr.halted)
         self.assertEqual(r.mgr.record(k).filled_qty, 40)
@@ -362,7 +407,10 @@ class GroupB_Idempotency(unittest.TestCase):
         req, _, _ = r.submit()
         k = req.idempotency_key
         for _ in range(2):
-            self.assertIs(r.mgr.apply_event(fill_event(k, synthetic_fill(k, 40, 50))).status, EventStatus.APPLIED)
+            self.assertIs(
+                r.mgr.apply_event(fill_event(k, synthetic_fill(k, 40, 50))).status,
+                EventStatus.APPLIED,
+            )
         self.assertEqual(r.mgr.record(k).filled_qty, 80)
 
     def test_overfill_is_quarantined(self):
@@ -417,19 +465,34 @@ class GroupB_Idempotency(unittest.TestCase):
         req, _, sub = r.submit()
         for ev in r.fill_events(r.advance(1)):
             r.mgr.apply_event(ev)
-        res = r.mgr.apply_event(BrokerEvent(EventKind.ACKNOWLEDGED, sub.record.order.broker_order_id,
-                                            req.idempotency_key, event_id="late-ack"))
+        res = r.mgr.apply_event(
+            BrokerEvent(
+                EventKind.ACKNOWLEDGED,
+                sub.record.order.broker_order_id,
+                req.idempotency_key,
+                event_id="late-ack",
+            )
+        )
         self.assertIs(res.status, EventStatus.STALE_IGNORED)
-        self.assertTrue(any(e["status"] == "STALE_IGNORED" for e in r.mgr.record(req.idempotency_key).event_log))
+        self.assertTrue(
+            any(e["status"] == "STALE_IGNORED" for e in r.mgr.record(req.idempotency_key).event_log)
+        )
 
     def test_ack_after_rejection_is_a_conflict(self):
         r = Rig()
         rd = decision()
         from domain.models.order_request import OrderRequest
+
         req = OrderRequest(A, Action.BUY, 10.0, OrderType.LIMIT, rd.risk_decision_id, 50.0)
         sub = r.mgr.submit(req, rd, r.broker, r.session)
-        res = r.mgr.apply_event(BrokerEvent(EventKind.ACKNOWLEDGED, sub.record.order.broker_order_id,
-                                            req.idempotency_key, event_id="odd"))
+        res = r.mgr.apply_event(
+            BrokerEvent(
+                EventKind.ACKNOWLEDGED,
+                sub.record.order.broker_order_id,
+                req.idempotency_key,
+                event_id="odd",
+            )
+        )
         self.assertIs(res.status, EventStatus.QUARANTINED)
         self.assertTrue(r.mgr.halted)
 
@@ -445,13 +508,16 @@ class GroupC_FailureRecovery(unittest.TestCase):
         self.assertIs(rec.order.state, S.SUBMITTED)
         self.assertTrue(r.mgr.halted)
         with self.assertRaises(UnresolvedSubmission):
-            r.mgr.submit(req, rd, r.broker, r.session)        # no blind retry
+            r.mgr.submit(req, rd, r.broker, r.session)  # no blind retry
         self.assertEqual(r.broker.order_statuses(r.session), {})
-        self.assertEqual(r.mgr.resolve_uncertain_submission(req.idempotency_key, r.broker, r.session), "ABSENT_AT_BROKER")
+        self.assertEqual(
+            r.mgr.resolve_uncertain_submission(req.idempotency_key, r.broker, r.session),
+            "ABSENT_AT_BROKER",
+        )
         self.assertIs(rec.submission, SubmissionStatus.ABSENT_AT_BROKER)
         self.assertIs(rec.order.state, S.REJECTED)
         self.assertEqual(r.broker.order_statuses(r.session), {})  # still nothing: never fabricated
-        self.assertTrue(r.mgr.halted)                             # resolution alone does not clear the halt
+        self.assertTrue(r.mgr.halted)  # resolution alone does not clear the halt
         with self.assertRaises(ExecutionHalted):
             r.submit()
 
@@ -460,10 +526,10 @@ class GroupC_FailureRecovery(unittest.TestCase):
         r.broker.inject_fault("FAIL_AFTER_ACCEPT")
         req, rd, sub = r.submit()
         self.assertIs(sub.outcome, SubmitOutcome.UNCERTAIN)
-        self.assertEqual(len(r.broker.order_statuses(r.session)), 1)   # the broker did accept it
+        self.assertEqual(len(r.broker.order_statuses(r.session)), 1)  # the broker did accept it
         with self.assertRaises(UnresolvedSubmission):
             r.mgr.submit(req, rd, r.broker, r.session)
-        self.assertEqual(len(r.broker.order_statuses(r.session)), 1)   # and the retry was NOT sent
+        self.assertEqual(len(r.broker.order_statuses(r.session)), 1)  # and the retry was NOT sent
         self.assertEqual(r.broker.duplicate_submissions, 0)
         out = r.mgr.resolve_uncertain_submission(req.idempotency_key, r.broker, r.session)
         self.assertIn("RECONCILED_FROM_BROKER", out)
@@ -480,7 +546,9 @@ class GroupC_FailureRecovery(unittest.TestCase):
         rec = r.mgr.record(req.idempotency_key)
         self.assertIs(rec.order.state, S.FILLED)
         self.assertIs(rec.submission, SubmissionStatus.RECONCILED_FROM_BROKER)
-        self.assertTrue(any("implicit acknowledgement" in h.detail for h in rec.order.state_history))
+        self.assertTrue(
+            any("implicit acknowledgement" in h.detail for h in rec.order.state_history)
+        )
         self.assertTrue(r.mgr.halted)  # the uncertainty halt remains until an operator clears it
 
     def test_halt_clearing_needs_resolution_and_an_operator(self):
@@ -489,10 +557,10 @@ class GroupC_FailureRecovery(unittest.TestCase):
         req, _, _ = r.submit()
         h = r.mgr.active_halts()[0]
         with self.assertRaises(ValueError):
-            r.mgr.clear_halt(h.halt_id, "op", "looks fine")      # still unresolved
+            r.mgr.clear_halt(h.halt_id, "op", "looks fine")  # still unresolved
         r.mgr.resolve_uncertain_submission(req.idempotency_key, r.broker, r.session)
         with self.assertRaises(ValueError):
-            r.mgr.clear_halt(h.halt_id, "", "")                  # no operator / reason
+            r.mgr.clear_halt(h.halt_id, "", "")  # no operator / reason
         cleared = r.mgr.clear_halt(h.halt_id, "operator-1", "reconciled from broker lookup")
         self.assertTrue(cleared.cleared)
         self.assertFalse(r.mgr.halted)
@@ -501,10 +569,14 @@ class GroupC_FailureRecovery(unittest.TestCase):
         r = Rig()
         r.submit()
         reps = r.advance(1)
-        r.mgr.apply_event(r.fill_events(reps)[0])               # fill recorded; crash before the portfolio update
+        r.mgr.apply_event(
+            r.fill_events(reps)[0]
+        )  # fill recorded; crash before the portfolio update
         pending = r.mgr.fills_pending_portfolio_application()
         self.assertEqual([f.fill_id for _k, f in pending], [reps[0].fill.fill_id])
-        r.mgr.mark_portfolio_applied(reps[0].fill.fill_id)       # recovery re-applies idempotently, then confirms
+        r.mgr.mark_portfolio_applied(
+            reps[0].fill.fill_id
+        )  # recovery re-applies idempotently, then confirms
         self.assertEqual(r.mgr.fills_pending_portfolio_application(), ())
         with self.assertRaises(KeyError):
             r.mgr.mark_portfolio_applied("not-a-fill")
@@ -514,14 +586,16 @@ class GroupC_FailureRecovery(unittest.TestCase):
         req, _, _ = r.submit()
         evs = r.fill_events(r.advance(1))
         r.mgr.apply_event(evs[0])
-        snap = json.loads(json.dumps(r.mgr.snapshot()))          # survives real JSON serialisation
+        snap = json.loads(json.dumps(r.mgr.snapshot()))  # survives real JSON serialisation
         m2 = OrderLifecycleManager.restore(snap, lambda: T0, {req.idempotency_key: req})
         rec = m2.record(req.idempotency_key)
         self.assertEqual((rec.order.state, rec.filled_qty), (S.PARTIALLY_FILLED, 40))
         self.assertIs(m2.apply_event(evs[0]).status, EventStatus.DUPLICATE_IGNORED)
         self.assertEqual(m2.record(req.idempotency_key).filled_qty, 40)
-        self.assertEqual([h.to_state for h in rec.order.state_history],
-                         [h.to_state for h in r.mgr.record(req.idempotency_key).order.state_history])
+        self.assertEqual(
+            [h.to_state for h in rec.order.state_history],
+            [h.to_state for h in r.mgr.record(req.idempotency_key).order.state_history],
+        )
 
     def test_restore_refuses_tampering_and_substituted_requests(self):
         r = Rig()
@@ -543,7 +617,9 @@ class GroupC_FailureRecovery(unittest.TestCase):
         r = Rig()
         r.broker.inject_fault("FAIL_AFTER_ACCEPT")
         req, rd, _ = r.submit()
-        m2 = OrderLifecycleManager.restore(json.loads(json.dumps(r.mgr.snapshot())), lambda: T0, {req.idempotency_key: req})
+        m2 = OrderLifecycleManager.restore(
+            json.loads(json.dumps(r.mgr.snapshot())), lambda: T0, {req.idempotency_key: req}
+        )
         self.assertTrue(m2.halted)
         with self.assertRaises(UnresolvedSubmission):
             m2.submit(req, rd, r.broker, r.session)
@@ -553,12 +629,16 @@ class GroupC_FailureRecovery(unittest.TestCase):
         r.broker.inject_fault("FAIL_AFTER_ACCEPT")
         req, _, sub = r.submit()
         k = req.idempotency_key
-        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, None, k))  # SUBMITTED, no ack -> RECON
+        r.mgr.apply_event(
+            BrokerEvent(EventKind.CANCEL_CONFIRMED, None, k)
+        )  # SUBMITTED, no ack -> RECON
         with self.assertRaises(ValueError):
-            r.mgr.resolve_reconciliation_required(k, S.FILLED, "op", "evidence")     # 0/100 filled
+            r.mgr.resolve_reconciliation_required(k, S.FILLED, "op", "evidence")  # 0/100 filled
         with self.assertRaises(ValueError):
             r.mgr.resolve_reconciliation_required(k, S.CANCELLED, "", "")
-        rec = r.mgr.resolve_reconciliation_required(k, S.CANCELLED, "op-1", "broker statement shows cancelled, 0 filled")
+        rec = r.mgr.resolve_reconciliation_required(
+            k, S.CANCELLED, "op-1", "broker statement shows cancelled, 0 filled"
+        )
         self.assertIs(rec.order.state, S.CANCELLED)
         self.assertEqual(rec.corrections[-1]["operator"], "op-1")
 
@@ -574,7 +654,9 @@ class GroupC_FailureRecovery(unittest.TestCase):
         self.assertEqual(rec.filled_qty, 40)
         with self.assertRaises(ValueError):
             r.mgr.accept_quarantined_fill(k, "late_fid", "", "")
-        acc = r.mgr.accept_quarantined_fill(k, "late_fid", "op-2", "broker fill report confirms 20 @ 50")
+        acc = r.mgr.accept_quarantined_fill(
+            k, "late_fid", "op-2", "broker fill report confirms 20 @ 50"
+        )
         self.assertTrue(acc.via_correction)
         self.assertEqual(rec.filled_qty, 60)
         self.assertEqual(rec.corrections[-1]["kind"], "ACCEPT_FILL")

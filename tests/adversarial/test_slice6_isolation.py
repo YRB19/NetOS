@@ -101,9 +101,14 @@ class ExecutionPathSafetyTests(unittest.TestCase):
 
     def test_only_sizing_constructs_order_requests(self):
         owners = set()
-        for f in py_files("risk_execution", "simulation", "intelligence", "research", "data", "domain/models"):
+        for f in py_files(
+            "risk_execution", "simulation", "intelligence", "research", "data", "domain/models"
+        ):
             for n in ast.walk(ast.parse(f.read_text())):
-                if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", "")) == "OrderRequest":
+                if (
+                    isinstance(n, ast.Call)
+                    and getattr(n.func, "id", getattr(n.func, "attr", "")) == "OrderRequest"
+                ):
                     owners.add(str(f.relative_to(ROOT)))
         self.assertEqual(owners, {"risk_execution/sizing/sizer.py"}, owners)
 
@@ -113,7 +118,10 @@ class ExecutionPathSafetyTests(unittest.TestCase):
         # model; it is unreachable from the Slice 6 pipeline and is excluded deliberately.
         for f in py_files("risk_execution", "simulation", "intelligence", "data"):
             for n in ast.walk(ast.parse(f.read_text())):
-                if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", "")) == "Fill":
+                if (
+                    isinstance(n, ast.Call)
+                    and getattr(n.func, "id", getattr(n.func, "attr", "")) == "Fill"
+                ):
                     owners.add(str(f.relative_to(ROOT)))
         self.assertEqual(owners, {"risk_execution/broker/adapters/simulated.py"}, owners)
 
@@ -122,12 +130,18 @@ class ExecutionPathSafetyTests(unittest.TestCase):
             for n in ast.walk(ast.parse(f.read_text())):
                 if isinstance(n, ast.Call):
                     name = getattr(n.func, "id", getattr(n.func, "attr", ""))
-                    self.assertNotIn(name, {"RiskDecision", "RiskCheckResult", "PortfolioState", "Order", "Fill"}, f)
+                    self.assertNotIn(
+                        name,
+                        {"RiskDecision", "RiskCheckResult", "PortfolioState", "Order", "Fill"},
+                        f,
+                    )
 
     def test_risk_engine_has_no_writable_hooks_into_strategy_or_runner(self):
         for f in py_files("risk_execution/risk_engine"):
             mods = imported_modules(f)
-            self.assertFalse({m for m in mods if m.startswith(("intelligence", "research", "simulation"))}, f)
+            self.assertFalse(
+                {m for m in mods if m.startswith(("intelligence", "research", "simulation"))}, f
+            )
 
 
 if __name__ == "__main__":

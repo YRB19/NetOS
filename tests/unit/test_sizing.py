@@ -20,23 +20,51 @@ CID = str(UUID(int=7))
 
 
 def cand(action=Action.BUY, hint=0.3) -> CandidateTrade:
-    return CandidateTrade(candidate_id=CID, instrument_id=A, timestamp=T, action=action, size_hint=hint,
-                          confidence=0.9, uncertainty_band=None, rationale="r", input_snapshot_id="snap",
-                          strategy_version_id="strat@1", model_version_id=None)
+    return CandidateTrade(
+        candidate_id=CID,
+        instrument_id=A,
+        timestamp=T,
+        action=action,
+        size_hint=hint,
+        confidence=0.9,
+        uncertainty_band=None,
+        rationale="r",
+        input_snapshot_id="snap",
+        strategy_version_id="strat@1",
+        model_version_id=None,
+    )
 
 
 def rd(verdict=RiskVerdict.APPROVE, ceiling=10_000.0, cid=CID, passed=True) -> RiskDecision:
     chk = (RiskCheckResult("RR-1", passed, "x"),)
     if verdict is RiskVerdict.APPROVE:
         return RiskDecision(cid, chk, verdict, "rules@1", ceiling, (), "risk_1")
-    return RiskDecision(cid, (RiskCheckResult("RR-1", False, "x"),), verdict, "rules@1", None, ("RR-1: x",), "risk_1")
+    return RiskDecision(
+        cid,
+        (RiskCheckResult("RR-1", False, "x"),),
+        verdict,
+        "rules@1",
+        None,
+        ("RR-1: x",),
+        "risk_1",
+    )
 
 
 def inputs(held=0, cash=1_000_000.0, equity="1000000", price="100", **kw) -> SizingInputs:
     pos = (Position(A, float(held), 90.0),) if held else ()
-    pf = PortfolioState(as_of_timestamp=T, positions=pos, cash_balance=cash, source=PortfolioStateSource.SYSTEM_BELIEF)
-    return SizingInputs(pf, Decimal(equity) if equity is not None else None,
-                        Decimal(price) if price is not None else None, research_run_id="run_1", **kw)
+    pf = PortfolioState(
+        as_of_timestamp=T,
+        positions=pos,
+        cash_balance=cash,
+        source=PortfolioStateSource.SYSTEM_BELIEF,
+    )
+    return SizingInputs(
+        pf,
+        Decimal(equity) if equity is not None else None,
+        Decimal(price) if price is not None else None,
+        research_run_id="run_1",
+        **kw,
+    )
 
 
 class SizingTests(unittest.TestCase):
@@ -60,14 +88,19 @@ class SizingTests(unittest.TestCase):
 
     def test_buy_at_or_above_target_is_no_trade(self):
         for held in (2970, 5000):
-            self.assertIs(size_order(cand(), rd(), inputs(held=held), self.cfg).outcome, SizingOutcome.NO_TRADE)
+            self.assertIs(
+                size_order(cand(), rd(), inputs(held=held), self.cfg).outcome,
+                SizingOutcome.NO_TRADE,
+            )
 
     def test_quantity_never_exceeds_risk_ceiling(self):
         d = size_order(cand(hint=0.3), rd(ceiling=500.0), inputs(), self.cfg)
         self.assertEqual(d.quantity, 500)
 
     def test_zero_and_insufficient_cash(self):
-        self.assertIs(size_order(cand(), rd(), inputs(cash=0.0), self.cfg).outcome, SizingOutcome.NO_TRADE)
+        self.assertIs(
+            size_order(cand(), rd(), inputs(cash=0.0), self.cfg).outcome, SizingOutcome.NO_TRADE
+        )
         d = size_order(cand(), rd(), inputs(cash=10_050.0), self.cfg)
         self.assertEqual(d.quantity, 100)  # affordable shares only
         self.assertIsNone(size_order(cand(), rd(), inputs(cash=50.0), self.cfg).order_request)
@@ -85,35 +118,63 @@ class SizingTests(unittest.TestCase):
         self.assertIs(size_order(cand(), rd(), inputs(), cfg).outcome, SizingOutcome.NO_TRADE)
 
     def test_zero_hint_buy_is_no_trade(self):
-        self.assertIs(size_order(cand(hint=0.0), rd(), inputs(), self.cfg).outcome, SizingOutcome.NO_TRADE)
+        self.assertIs(
+            size_order(cand(hint=0.0), rd(), inputs(), self.cfg).outcome, SizingOutcome.NO_TRADE
+        )
 
     def test_invalid_size_hints_rejected(self):
         for h in (float("nan"), float("inf"), -0.1, 1.5):
             c = cand()
             object.__setattr__(c, "size_hint", h)
-            self.assertIs(size_order(c, rd(), inputs(), self.cfg).outcome, SizingOutcome.REJECTED_INVALID_INPUT, msg=str(h))
+            self.assertIs(
+                size_order(c, rd(), inputs(), self.cfg).outcome,
+                SizingOutcome.REJECTED_INVALID_INPUT,
+                msg=str(h),
+            )
         c = cand()
         object.__setattr__(c, "size_hint", None)
-        self.assertIs(size_order(c, rd(), inputs(), self.cfg).outcome, SizingOutcome.REJECTED_INVALID_INPUT)
+        self.assertIs(
+            size_order(c, rd(), inputs(), self.cfg).outcome, SizingOutcome.REJECTED_INVALID_INPUT
+        )
 
     def test_invalid_prices_and_equity_and_missing_state(self):
         for price in ("0", "-5", None, "NaN", "Infinity"):
-            self.assertIs(size_order(cand(), rd(), inputs(price=price), self.cfg).outcome,
-                          SizingOutcome.REJECTED_INVALID_INPUT, msg=str(price))
+            self.assertIs(
+                size_order(cand(), rd(), inputs(price=price), self.cfg).outcome,
+                SizingOutcome.REJECTED_INVALID_INPUT,
+                msg=str(price),
+            )
         for eq in ("0", "-1", None):
-            self.assertIs(size_order(cand(), rd(), inputs(equity=eq), self.cfg).outcome, SizingOutcome.REJECTED_INVALID_INPUT)
-        self.assertIs(size_order(cand(), rd(), SizingInputs(None, Decimal(1), Decimal(1)), self.cfg).outcome,
-                      SizingOutcome.REJECTED_INVALID_INPUT)
+            self.assertIs(
+                size_order(cand(), rd(), inputs(equity=eq), self.cfg).outcome,
+                SizingOutcome.REJECTED_INVALID_INPUT,
+            )
+        self.assertIs(
+            size_order(cand(), rd(), SizingInputs(None, Decimal(1), Decimal(1)), self.cfg).outcome,
+            SizingOutcome.REJECTED_INVALID_INPUT,
+        )
 
     def test_sell_full_exit_and_partial(self):
         full = size_order(cand(Action.SELL, 0.0), rd(ceiling=1000.0), inputs(held=1000), self.cfg)
-        self.assertEqual((full.outcome, full.quantity, full.side), (SizingOutcome.ORDER, 1000, Action.SELL))
+        self.assertEqual(
+            (full.outcome, full.quantity, full.side), (SizingOutcome.ORDER, 1000, Action.SELL)
+        )
         part = size_order(cand(Action.SELL, 0.1), rd(ceiling=5000.0), inputs(held=5000), self.cfg)
         self.assertEqual(part.quantity, 5000 - 990)  # keep floor(0.1*1e6*0.99/100)=990
-        self.assertIs(size_order(cand(Action.SELL, 0.0), rd(ceiling=1.0), inputs(held=1000), self.cfg).quantity, 1)
+        self.assertIs(
+            size_order(
+                cand(Action.SELL, 0.0), rd(ceiling=1.0), inputs(held=1000), self.cfg
+            ).quantity,
+            1,
+        )
 
     def test_sell_never_exceeds_holding_or_goes_negative(self):
-        d = size_order(cand(Action.SELL, 0.0), rd(ceiling=99999.0), inputs(held=300, pending_sell_qty=100), self.cfg)
+        d = size_order(
+            cand(Action.SELL, 0.0),
+            rd(ceiling=99999.0),
+            inputs(held=300, pending_sell_qty=100),
+            self.cfg,
+        )
         self.assertEqual(d.quantity, 200)
         none = size_order(cand(Action.SELL, 0.0), rd(), inputs(held=0), self.cfg)
         self.assertIs(none.outcome, SizingOutcome.NO_TRADE)
@@ -131,7 +192,9 @@ class SizingTests(unittest.TestCase):
                     self.assertIsInstance(d.quantity, int)
                     self.assertGreaterEqual(d.quantity, 0)
                     if d.order_request:
-                        self.assertEqual(d.order_request.quantity, float(int(d.order_request.quantity)))
+                        self.assertEqual(
+                            d.order_request.quantity, float(int(d.order_request.quantity))
+                        )
                         self.assertLessEqual(d.quantity, 3000)
 
     def test_vetoed_candidate_never_becomes_an_order(self):
@@ -142,18 +205,31 @@ class SizingTests(unittest.TestCase):
 
     def test_approval_for_a_different_candidate_or_forged_approve_is_refused(self):
         other = rd(cid=str(UUID(int=99)))
-        self.assertIs(size_order(cand(), other, inputs(), self.cfg).outcome, SizingOutcome.REFUSED_NOT_APPROVED)
-        with self.assertRaises(ValueError):  # the domain type already refuses APPROVE-with-failed-check
+        self.assertIs(
+            size_order(cand(), other, inputs(), self.cfg).outcome,
+            SizingOutcome.REFUSED_NOT_APPROVED,
+        )
+        with self.assertRaises(
+            ValueError
+        ):  # the domain type already refuses APPROVE-with-failed-check
             rd(passed=False)
         for junk in (None, "APPROVE", True, object()):
-            self.assertIs(size_order(cand(), junk, inputs(), self.cfg).outcome, SizingOutcome.REFUSED_NOT_APPROVED)
+            self.assertIs(
+                size_order(cand(), junk, inputs(), self.cfg).outcome,
+                SizingOutcome.REFUSED_NOT_APPROVED,
+            )
 
     def test_invalid_config_refused(self):
         bad = sizing_config(cash_buffer=Decimal("1"))
-        self.assertIs(size_order(cand(), rd(), inputs(), bad).outcome, SizingOutcome.REJECTED_INVALID_INPUT)
+        self.assertIs(
+            size_order(cand(), rd(), inputs(), bad).outcome, SizingOutcome.REJECTED_INVALID_INPUT
+        )
 
     def test_deterministic_repeat(self):
-        self.assertEqual(size_order(cand(), rd(), inputs(), self.cfg), size_order(cand(), rd(), inputs(), self.cfg))
+        self.assertEqual(
+            size_order(cand(), rd(), inputs(), self.cfg),
+            size_order(cand(), rd(), inputs(), self.cfg),
+        )
 
 
 if __name__ == "__main__":

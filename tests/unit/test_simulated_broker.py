@@ -50,15 +50,22 @@ class SimulatedBrokerTests(unittest.TestCase):
     def test_valid_request_walks_the_existing_state_machine(self):
         b, s = broker()
         st = b.place_order(s, req())
-        self.assertEqual(states(st), [OrderState.APPROVED, OrderState.SUBMITTED, OrderState.ACKNOWLEDGED])
+        self.assertEqual(
+            states(st), [OrderState.APPROVED, OrderState.SUBMITTED, OrderState.ACKNOWLEDGED]
+        )
         fills = b.advance(T1, {A: Decimal("50")})
         self.assertEqual(len(fills), 1)
         st = b.get_order_status(s, st.broker_order_id)
         self.assertIs(st.state, OrderState.FILLED)
         self.assertEqual((st.filled_quantity, st.remaining_quantity), (100, 0))
         f = fills[0]
-        self.assertEqual((f.fill.quantity, f.fill.price, f.state_after), (100.0, 50.0, OrderState.FILLED))
-        self.assertEqual((f.adapter_id, f.risk_decision_id, f.idempotency_key), ("simulated-broker", "risk_1", "k1"))
+        self.assertEqual(
+            (f.fill.quantity, f.fill.price, f.state_after), (100.0, 50.0, OrderState.FILLED)
+        )
+        self.assertEqual(
+            (f.adapter_id, f.risk_decision_id, f.idempotency_key),
+            ("simulated-broker", "risk_1", "k1"),
+        )
         self.assertGreater(f.charges.total_cost, 0)
 
     def test_deterministic_ids_and_repeat_simulation(self):
@@ -67,13 +74,16 @@ class SimulatedBrokerTests(unittest.TestCase):
             st = b.place_order(s, req())
             fills = b.advance(T1, {A: Decimal("50")})
             return st.broker_order_id, st.order_id, fills[0].fill.fill_id, b.ledger_snapshot()
+
         self.assertEqual(run(), run())
         self.assertEqual(run()[1], order_id_for_idempotency_key("k1"))
 
     def test_not_filled_before_next_bar(self):
         b, s = broker()
         b.place_order(s, req())
-        self.assertEqual(b.advance(T0, {A: Decimal("50")}), ())  # same timestamp: no fill (NEXT_BAR_OPEN)
+        self.assertEqual(
+            b.advance(T0, {A: Decimal("50")}), ()
+        )  # same timestamp: no fill (NEXT_BAR_OPEN)
 
     def test_ledger_cash_and_positions(self):
         b, s = broker()
@@ -94,8 +104,18 @@ class SimulatedBrokerTests(unittest.TestCase):
 
     def test_unsupported_order_type_and_fractional_quantity_rejected(self):
         b, s = broker()
-        lim = b.place_order(s, OrderRequest(instrument_id=A, side=Action.BUY, quantity=10.0, order_type=OrderType.LIMIT,
-                                            risk_decision_id="r", idempotency_key="k2", limit_price=10.0))
+        lim = b.place_order(
+            s,
+            OrderRequest(
+                instrument_id=A,
+                side=Action.BUY,
+                quantity=10.0,
+                order_type=OrderType.LIMIT,
+                risk_decision_id="r",
+                idempotency_key="k2",
+                limit_price=10.0,
+            ),
+        )
         self.assertIs(lim.state, OrderState.REJECTED)
         self.assertIn("unsupported order type", lim.last_response)
         frac = b.place_order(s, req("k3", qty=10.5))
@@ -141,11 +161,17 @@ class SimulatedBrokerTests(unittest.TestCase):
     def test_partial_fills_complete_over_bars(self):
         b, s = broker(max_fill_fraction_per_bar=Decimal("0.4"))
         st = b.place_order(s, req(qty=100.0))
-        q = [f.fill.quantity for k in (1, 2, 3, 4) for f in b.advance(T0 + timedelta(days=k), {A: Decimal("50")})]
+        q = [
+            f.fill.quantity
+            for k in (1, 2, 3, 4)
+            for f in b.advance(T0 + timedelta(days=k), {A: Decimal("50")})
+        ]
         self.assertEqual(q, [40.0, 40.0, 20.0])  # fixed fraction of the ORIGINAL quantity per bar
         st = b.get_order_status(s, st.broker_order_id)
         self.assertIs(st.state, OrderState.FILLED)
-        self.assertEqual(states(st).count(OrderState.PARTIALLY_FILLED), 1)  # no illegal self-transition
+        self.assertEqual(
+            states(st).count(OrderState.PARTIALLY_FILLED), 1
+        )  # no illegal self-transition
 
     def test_cancel_of_unfilled_acknowledged_order_is_confirmed_cancelled_after_adr_11(self):
         # SUPERSEDES the Slice 6 assertion that this was an invalid transition. Rationale (ADR-11): FR-3 (Must)
@@ -153,15 +179,16 @@ class SimulatedBrokerTests(unittest.TestCase):
         b, s = broker()
         st = b.place_order(s, req())
         self.assertIs(b.cancel_order(s, st.broker_order_id).state, OrderState.CANCELLED)
-        self.assertEqual(b.advance(T1, {A: Decimal("50")}), ())       # a cancelled order never fills
+        self.assertEqual(b.advance(T1, {A: Decimal("50")}), ())  # a cancelled order never fills
         self.assertEqual(b.ledger_snapshot()["positions"], {})
 
     def test_cancel_of_a_submitted_not_acknowledged_order_is_still_not_a_legal_edge(self):
         from domain.models.order import ALLOWED_TRANSITIONS
+
         self.assertNotIn(OrderState.CANCELLED, ALLOWED_TRANSITIONS[OrderState.SUBMITTED])
         self.assertNotIn(OrderState.CANCELLED, ALLOWED_TRANSITIONS[OrderState.APPROVED])
         for t in (OrderState.FILLED, OrderState.CANCELLED, OrderState.REJECTED):
-            self.assertEqual(ALLOWED_TRANSITIONS[t], frozenset())     # terminal states stay terminal
+            self.assertEqual(ALLOWED_TRANSITIONS[t], frozenset())  # terminal states stay terminal
 
     def test_reconciliation_required_orders_are_never_filled(self):
         b, s = broker()
@@ -204,8 +231,12 @@ class SimulatedBrokerTests(unittest.TestCase):
             fresh.place_order(fresh.authenticate(), req())  # no wall-clock fallback
 
     def test_invalid_config_refused(self):
-        for over in (dict(initial_cash=Decimal("0")), dict(max_fill_fraction_per_bar=Decimal("0")),
-                     dict(max_fill_fraction_per_bar=Decimal("1.5")), dict(cost_schedule_version="")):
+        for over in (
+            dict(initial_cash=Decimal("0")),
+            dict(max_fill_fraction_per_bar=Decimal("0")),
+            dict(max_fill_fraction_per_bar=Decimal("1.5")),
+            dict(cost_schedule_version=""),
+        ):
             with self.assertRaises(ValueError):
                 SimulatedBrokerAdapter(broker_config(**over))
 

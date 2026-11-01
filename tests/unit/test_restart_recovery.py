@@ -68,7 +68,7 @@ class Base(unittest.TestCase):
         self.addCleanup(self._td.cleanup)
         self.path = Path(self._td.name) / "lifecycle.json"
         self.store = CheckpointStore(self.path)
-        self.requests: dict = {}     # stands in for the sizing-owned store of the ORIGINAL OrderRequests
+        self.requests: dict = {}  # stands in for the sizing-owned store of the ORIGINAL OrderRequests
         self.rig = Rig(max_fill_fraction_per_bar=Decimal("0.5"))
         self.rig.mgr = OrderLifecycleManager(RRV, lambda: self.rig.now["t"], self.store)
 
@@ -80,7 +80,9 @@ class Base(unittest.TestCase):
 
     def restart(self):
         """A brand-new manager object from disk; the broker object (external system) survives."""
-        m = OrderLifecycleManager.restore_from_store(self.store, lambda: self.rig.now["t"], self.requests)
+        m = OrderLifecycleManager.restore_from_store(
+            self.store, lambda: self.rig.now["t"], self.requests
+        )
         self.assertIsNot(m, self.rig.mgr)
         self.rig.mgr = m
         return m
@@ -100,7 +102,7 @@ class Boundaries(Base):
         req, rd = self.new_order()
         with self.assertRaises(CheckpointError):
             self.rig.mgr.submit(req, rd, self.rig.broker, self.rig.session)
-        self.assertEqual(self.rig.broker.order_statuses(self.rig.session), {})        # NOT sent
+        self.assertEqual(self.rig.broker.order_statuses(self.rig.session), {})  # NOT sent
         rec = self.rig.mgr.record(req.idempotency_key)
         self.assertIs(rec.submission, SubmissionStatus.LOCAL_FAILURE)
         self.assertIs(rec.order.state, S.APPROVED)
@@ -109,12 +111,16 @@ class Boundaries(Base):
             self.rig.mgr.submit(*self.new_order(), self.rig.broker, self.rig.session)
 
     def test_later_checkpoint_failure_halts_and_never_reports_clean_success(self):
-        self.rig.mgr = OrderLifecycleManager(RRV, lambda: T0, FailingStore(self.path, fail_on=2))   # 2nd write = post-submission
+        self.rig.mgr = OrderLifecycleManager(
+            RRV, lambda: T0, FailingStore(self.path, fail_on=2)
+        )  # 2nd write = post-submission
         req, rd = self.new_order()
         with self.assertRaises(CheckpointError):
             self.rig.mgr.submit(req, rd, self.rig.broker, self.rig.session)
         self.assertTrue(self.rig.mgr.halted)
-        self.assertEqual(len(self.rig.broker.order_statuses(self.rig.session)), 1)     # the broker did get it
+        self.assertEqual(
+            len(self.rig.broker.order_statuses(self.rig.session)), 1
+        )  # the broker did get it
         # disk still holds the write-ahead state, so a restart recovers by LOOKUP, not by re-sending
         m = self.restart()
         m.recover_after_restart(self.rig.broker, self.rig.session)
@@ -124,7 +130,9 @@ class Boundaries(Base):
     def test_crash_after_write_ahead_before_the_broker_accepts(self):
         req, rd = self.new_order()
         with self.assertRaises(Crash):
-            self.rig.mgr.submit(req, rd, CrashingAdapter(self.rig.broker, "before"), self.rig.session)
+            self.rig.mgr.submit(
+                req, rd, CrashingAdapter(self.rig.broker, "before"), self.rig.session
+            )
         self.assertEqual(self.rig.broker.order_statuses(self.rig.session), {})
         m = self.restart()
         rec = m.record(req.idempotency_key)
@@ -132,28 +140,39 @@ class Boundaries(Base):
         acts = m.recover_after_restart(self.rig.broker, self.rig.session)
         self.assertEqual(acts["marked_unconfirmed"], [req.idempotency_key])
         self.assertIs(rec.submission, SubmissionStatus.ABSENT_AT_BROKER)
-        self.assertEqual(self.rig.broker.order_statuses(self.rig.session), {})        # never fabricated, never re-sent
-        self.assertTrue(m.halted)                                                       # operator must clear it
+        self.assertEqual(
+            self.rig.broker.order_statuses(self.rig.session), {}
+        )  # never fabricated, never re-sent
+        self.assertTrue(m.halted)  # operator must clear it
         with self.assertRaises(ExecutionHalted):
             m.submit(*self.new_order(), self.rig.broker, self.rig.session)
 
     def test_crash_after_broker_acceptance_before_the_caller_gets_the_response(self):
         req, rd = self.new_order()
         with self.assertRaises(Crash):
-            self.rig.mgr.submit(req, rd, CrashingAdapter(self.rig.broker, "after"), self.rig.session)
+            self.rig.mgr.submit(
+                req, rd, CrashingAdapter(self.rig.broker, "after"), self.rig.session
+            )
         self.assertEqual(len(self.rig.broker.order_statuses(self.rig.session)), 1)
         m = self.restart()
         acts = m.recover_after_restart(self.rig.broker, self.rig.session)
         self.assertIn("RECONCILED_FROM_BROKER", acts["resolved"][0])
-        self.assertEqual(len(self.rig.broker.order_statuses(self.rig.session)), 1)    # still exactly one broker order
+        self.assertEqual(
+            len(self.rig.broker.order_statuses(self.rig.session)), 1
+        )  # still exactly one broker order
         self.assertEqual(self.rig.broker.duplicate_submissions, 0)
         rec = m.record(req.idempotency_key)
-        self.assertEqual((rec.order.state, rec.submission), (S.ACKNOWLEDGED, SubmissionStatus.RECONCILED_FROM_BROKER))
-        again = m.submit(req, rd, self.rig.broker, self.rig.session)                       # a retry is never re-sent
+        self.assertEqual(
+            (rec.order.state, rec.submission),
+            (S.ACKNOWLEDGED, SubmissionStatus.RECONCILED_FROM_BROKER),
+        )
+        again = m.submit(req, rd, self.rig.broker, self.rig.session)  # a retry is never re-sent
         self.assertEqual(again.outcome.value, "DUPLICATE_NOT_RESENT")
         self.assertEqual(len(self.rig.broker.order_statuses(self.rig.session)), 1)
 
-    def test_unconfirmed_submission_cannot_be_retried_before_reconciliation_even_after_restart(self):
+    def test_unconfirmed_submission_cannot_be_retried_before_reconciliation_even_after_restart(
+        self,
+    ):
         self.rig.broker.inject_fault("FAIL_AFTER_ACCEPT")
         req, rd = self.new_order()
         self.rig.mgr.submit(req, rd, self.rig.broker, self.rig.session)
@@ -165,14 +184,18 @@ class Boundaries(Base):
     def test_after_ack_but_before_fills_were_processed(self):
         req, rd = self.new_order()
         self.rig.mgr.submit(req, rd, self.rig.broker, self.rig.session)
-        self.rig.advance(1)                                   # broker fills 50; the process died before ingesting them
+        self.rig.advance(1)  # broker fills 50; the process died before ingesting them
         m = self.restart()
         self.assertEqual(m.record(req.idempotency_key).filled_qty, 0)
         acts = m.recover_after_restart(self.rig.broker, self.rig.session)
         self.assertEqual(len(acts["replayed_fills"]), 1)
-        self.assertEqual((m.record(req.idempotency_key).filled_qty, m.record(req.idempotency_key).order.state),
-                         (50, S.PARTIALLY_FILLED))
-        again = m.recover_after_restart(self.rig.broker, self.rig.session)                # replay twice: no new effect
+        self.assertEqual(
+            (m.record(req.idempotency_key).filled_qty, m.record(req.idempotency_key).order.state),
+            (50, S.PARTIALLY_FILLED),
+        )
+        again = m.recover_after_restart(
+            self.rig.broker, self.rig.session
+        )  # replay twice: no new effect
         self.assertEqual(again["replayed_fills"], [])
         self.assertEqual(m.record(req.idempotency_key).filled_qty, 50)
 
@@ -181,26 +204,33 @@ class Boundaries(Base):
         self.rig.mgr.submit(req, rd, self.rig.broker, self.rig.session)
         reps = list(self.rig.advance(1)) + list(self.rig.advance(2))
         for ev in self.rig.fill_events(reps):
-            self.rig.mgr.apply_event(ev)                      # checkpointed; the portfolio update never happened
+            self.rig.mgr.apply_event(ev)  # checkpointed; the portfolio update never happened
         m = self.restart()
         pending = m.fills_pending_portfolio_application()
         self.assertEqual({f.fill_id for _k, f in pending}, {x.fill.fill_id for x in reps})
         pf = ResearchPortfolio(self.rig.opening.cash)
         by_id = {x.fill.fill_id: x for x in reps}
-        for _k, f in pending:                                 # recovery re-applies, confirming each one
+        for _k, f in pending:  # recovery re-applies, confirming each one
             pf.buy(A, f.quantity, f.price, by_id[f.fill_id].charges.total_cost)
             m.mark_portfolio_applied(f.fill_id)
-        m.recover_after_restart(self.rig.broker, self.rig.session)         # replaying broker evidence changes nothing
+        m.recover_after_restart(
+            self.rig.broker, self.rig.session
+        )  # replaying broker evidence changes nothing
         self.assertEqual(m.fills_pending_portfolio_application(), ())
-        clean = ResearchPortfolio(self.rig.opening.cash)                    # the uninterrupted reference
+        clean = ResearchPortfolio(self.rig.opening.cash)  # the uninterrupted reference
         for x in reps:
             clean.buy(A, int(x.fill.quantity), Decimal(str(x.fill.price)), x.charges.total_cost)
         self.assertEqual((pf.cash, pf.quantity(A)), (clean.cash, clean.quantity(A)))
         b = self.rig.broker_view()
         snap = pf.positions_snapshot()
-        res = reconcile_execution(m, self.rig.opening, LedgerView(pf.cash, {A: pf.quantity(A)},
-                                                                  {A: Decimal(snap[0]["avg_cost"])}), b,
-                                  self.rig.broker.order_statuses(self.rig.session), tuple(self.rig.broker.get_fills(self.rig.session)))
+        res = reconcile_execution(
+            m,
+            self.rig.opening,
+            LedgerView(pf.cash, {A: pf.quantity(A)}, {A: Decimal(snap[0]["avg_cost"])}),
+            b,
+            self.rig.broker.order_statuses(self.rig.session),
+            tuple(self.rig.broker.get_fills(self.rig.session)),
+        )
         self.assertTrue(res.consistent, res.mismatches)
 
     def test_crash_during_reconciliation_records_nothing_and_never_counts_as_success(self):
@@ -213,12 +243,14 @@ class Boundaries(Base):
         bad = LedgerView(b.cash + 1, b.positions, b.avg_costs)
         halt = self.rig.mgr.record_reconciliation(recon(self.rig, internal=bad))
         m = self.restart()
-        self.assertEqual([h.halt_id for h in m.active_halts()], [halt.halt_id])        # halt survived the restart
-        with self.assertRaises(Crash):                                                   # reconciliation dies mid-way
+        self.assertEqual(
+            [h.halt_id for h in m.active_halts()], [halt.halt_id]
+        )  # halt survived the restart
+        with self.assertRaises(Crash):  # reconciliation dies mid-way
             reconcile_execution(m, self.rig.opening, b, b, (_ for _ in ()).throw(Crash()), ())
         with self.assertRaises(ValueError):
             m.clear_halt(halt.halt_id, "op", "assumed fine", "recon_never_finished")
-        good = recon(self.rig)                                                           # after restart the check completes
+        good = recon(self.rig)  # after restart the check completes
         m.record_reconciliation(good)
         m.clear_halt(halt.halt_id, "op-1", "re-ran reconciliation after restart", good.run_id)
         self.assertFalse(m.halted)
@@ -238,10 +270,15 @@ class Boundaries(Base):
                 m.apply_event(ev)
             m.recover_after_restart(self.rig.broker, self.rig.session)
         rec = m.record(req.idempotency_key)
-        self.assertEqual((rec.filled_qty, len(rec.applied_fills), rec.order.state), (100, 2, S.FILLED))
+        self.assertEqual(
+            (rec.filled_qty, len(rec.applied_fills), rec.order.state), (100, 2, S.FILLED)
+        )
         self.assertEqual(len(self.rig.broker.order_statuses(self.rig.session)), 1)
         after = recon(self.rig)
-        self.assertEqual((after.implied_cash, after.implied_positions), (before.implied_cash, before.implied_positions))
+        self.assertEqual(
+            (after.implied_cash, after.implied_positions),
+            (before.implied_cash, before.implied_positions),
+        )
         self.assertTrue(after.consistent, after.mismatches)
         self.assertFalse(m.halted)
 
@@ -271,17 +308,19 @@ class RestoreValidationAndAtomicity(Base):
         with self.assertRaises(CheckpointError):
             OrderLifecycleManager.restore_from_store(self.store, lambda: T0, self.requests)
         self.path.write_text(json.dumps(good))
-        with self.assertRaises(ValueError):                           # lifecycle must not invent a replacement request
+        with self.assertRaises(ValueError):  # lifecycle must not invent a replacement request
             OrderLifecycleManager.restore_from_store(self.store, lambda: T0, {})
         other = request_for(decision(), 7.0, key=req.idempotency_key)
         with self.assertRaises(ValueError):
-            OrderLifecycleManager.restore_from_store(self.store, lambda: T0, {req.idempotency_key: other})
+            OrderLifecycleManager.restore_from_store(
+                self.store, lambda: T0, {req.idempotency_key: other}
+            )
 
     def test_inconsistent_history_with_a_valid_checksum_is_refused(self):
         req = self._submitted()
         snap = json.loads(self.path.read_text())
         body = snap["body"]
-        body["records"][0]["history"][-1]["to"] = "FILLED"          # ACK recorded as FILLED with zero fills
+        body["records"][0]["history"][-1]["to"] = "FILLED"  # ACK recorded as FILLED with zero fills
         bad = {"body": body, "checksum": hash_json_stable(body)}
         self.path.write_text(json.dumps(bad))
         with self.assertRaises(ValueError):
@@ -296,7 +335,7 @@ class RestoreValidationAndAtomicity(Base):
                 self.store.write({"body": {}, "checksum": "x"})
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(self.store.read()["checksum"], json.loads(before)["checksum"])
-        self.restart()                                                # and it still restores
+        self.restart()  # and it still restores
 
     def test_written_file_is_atomic_json_and_fsynced(self):
         with mock.patch("os.fsync", wraps=os.fsync) as fs:
@@ -310,11 +349,15 @@ class RestoreValidationAndAtomicity(Base):
         holds only when broker-side records survive, as a real broker's do."""
         req, rd = self.new_order()
         with self.assertRaises(Crash):
-            self.rig.mgr.submit(req, rd, CrashingAdapter(self.rig.broker, "after"), self.rig.session)
+            self.rig.mgr.submit(
+                req, rd, CrashingAdapter(self.rig.broker, "after"), self.rig.session
+            )
         amnesiac = Rig(max_fill_fraction_per_bar=Decimal("0.5"))
         m = self.restart()
         acts = m.recover_after_restart(amnesiac.broker, amnesiac.session)
-        self.assertIn("ABSENT_AT_BROKER", acts["resolved"][0])        # (and the original broker still holds the real order)
+        self.assertIn(
+            "ABSENT_AT_BROKER", acts["resolved"][0]
+        )  # (and the original broker still holds the real order)
         self.assertEqual(len(self.rig.broker.order_statuses(self.rig.session)), 1)
         self.assertTrue(m.halted)
 

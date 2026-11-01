@@ -20,11 +20,18 @@ from tests.unit._lifecycle_helpers import A, Rig, decision, fill_event, request_
 O = ReconciliationOutcome
 
 
-def recon(r: Rig, internal: LedgerView | None = None, fills=None, statuses=None, fn=reconcile_execution):
+def recon(
+    r: Rig, internal: LedgerView | None = None, fills=None, statuses=None, fn=reconcile_execution
+):
     b = r.broker_view()
-    return fn(r.mgr, r.opening, internal or b, b,
-              r.broker.order_statuses(r.session) if statuses is None else statuses,
-              tuple(r.broker.get_fills(r.session)) if fills is None else fills)
+    return fn(
+        r.mgr,
+        r.opening,
+        internal or b,
+        b,
+        r.broker.order_statuses(r.session) if statuses is None else statuses,
+        tuple(r.broker.get_fills(r.session)) if fills is None else fills,
+    )
 
 
 def kinds(res):
@@ -65,7 +72,11 @@ class GroupD_Reconciliation(unittest.TestCase):
         req, _, sub = r.submit()
         book(r, r.advance(1))
         r.broker.cancel_order(r.session, sub.record.order.broker_order_id)
-        r.mgr.apply_event(BrokerEvent(EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key))
+        r.mgr.apply_event(
+            BrokerEvent(
+                EventKind.CANCEL_CONFIRMED, sub.record.order.broker_order_id, req.idempotency_key
+            )
+        )
         res = recon(r)
         self.assertIs(res.outcome, O.CONSISTENT, res.mismatches)
         self.assertEqual(res.implied_positions, {A: 40})
@@ -73,22 +84,36 @@ class GroupD_Reconciliation(unittest.TestCase):
     def test_missing_fill_in_lifecycle_is_detected_then_reconciled_from_broker_evidence(self):
         r = Rig()
         r.submit()
-        reps = r.advance(1)                       # broker filled; the event was never delivered to us
+        reps = r.advance(1)  # broker filled; the event was never delivered to us
         res = recon(r)
         self.assertIn("FILL_MISSING_IN_LIFECYCLE", kinds(res))
         self.assertIn("POSITION", kinds(res))
         self.assertIs(res.outcome, O.MISMATCH_DETECTED)
-        stale_books = LedgerView(r.opening.cash, {}, {})           # internal portfolio never saw the fill either
-        behind = reconcile_from_broker_evidence(r.mgr, r.opening, stale_books, r.broker_view(),
-                                                r.broker.order_statuses(r.session), tuple(r.broker.get_fills(r.session)))
-        self.assertFalse(behind.consistent)                    # lifecycle caught up, internal books did not
+        stale_books = LedgerView(
+            r.opening.cash, {}, {}
+        )  # internal portfolio never saw the fill either
+        behind = reconcile_from_broker_evidence(
+            r.mgr,
+            r.opening,
+            stale_books,
+            r.broker_view(),
+            r.broker.order_statuses(r.session),
+            tuple(r.broker.get_fills(r.session)),
+        )
+        self.assertFalse(behind.consistent)  # lifecycle caught up, internal books did not
         self.assertIn("PORTFOLIO_APPLICATION_PENDING", kinds(behind))
         r2 = Rig()
         r2.submit()
         reps2 = r2.advance(1)
-        fixed = reconcile_from_broker_evidence(r2.mgr, r2.opening, LedgerView(r2.opening.cash, {}, {}), r2.broker_view(),
-                                               r2.broker.order_statuses(r2.session), tuple(r2.broker.get_fills(r2.session)),
-                                               book_evidence=lambda rep: r2.broker_view())
+        fixed = reconcile_from_broker_evidence(
+            r2.mgr,
+            r2.opening,
+            LedgerView(r2.opening.cash, {}, {}),
+            r2.broker_view(),
+            r2.broker.order_statuses(r2.session),
+            tuple(r2.broker.get_fills(r2.session)),
+            book_evidence=lambda rep: r2.broker_view(),
+        )
         self.assertIs(fixed.outcome, O.RECONCILED_FROM_BROKER_EVIDENCE, fixed.mismatches)
         self.assertEqual(fixed.evidence_fill_ids, (reps2[0].fill.fill_id,))
         self.assertEqual(r2.mgr.fills_pending_portfolio_application(), ())
@@ -119,7 +144,9 @@ class GroupD_Reconciliation(unittest.TestCase):
         book(r, r.advance(1))
         b = r.broker_view()
         pos = recon(r, internal=LedgerView(b.cash, {A: 99}, b.avg_costs))
-        self.assertEqual([m.kind for m in pos.mismatches if m.kind == "POSITION"].count("POSITION"), 2)
+        self.assertEqual(
+            [m.kind for m in pos.mismatches if m.kind == "POSITION"].count("POSITION"), 2
+        )
         cash = recon(r, internal=LedgerView(b.cash + Decimal("0.01"), b.positions, b.avg_costs))
         self.assertIn("CASH", kinds(cash))
         self.assertIs(cash.outcome, O.MISMATCH_DETECTED)
@@ -145,7 +172,7 @@ class GroupD_Reconciliation(unittest.TestCase):
     def test_unresolved_order_identity_unknown_broker_order(self):
         r = Rig()
         rd = decision()
-        r.broker.place_order(r.session, request_for(rd, 10.0))     # placed behind the lifecycle's back
+        r.broker.place_order(r.session, request_for(rd, 10.0))  # placed behind the lifecycle's back
         res = recon(r)
         self.assertIn("UNKNOWN_BROKER_ORDER", kinds(res))
         self.assertIs(res.outcome, O.UNRESOLVED)
@@ -173,7 +200,7 @@ class GroupD_Reconciliation(unittest.TestCase):
         r = Rig()
         r.submit()
         for ev in r.fill_events(r.advance(1)):
-            r.mgr.apply_event(ev)                                  # crash before portfolio update
+            r.mgr.apply_event(ev)  # crash before portfolio update
         self.assertIn("PORTFOLIO_APPLICATION_PENDING", kinds(recon(r)))
 
     def test_mismatch_halts_execution_and_only_an_evidenced_operator_action_clears_it(self):
@@ -191,9 +218,9 @@ class GroupD_Reconciliation(unittest.TestCase):
         r.mgr.record_reconciliation(good)
         self.assertTrue(r.mgr.halted)
         with self.assertRaises(ValueError):
-            r.mgr.clear_halt(halt.halt_id, "op", "all good")                      # no run cited
+            r.mgr.clear_halt(halt.halt_id, "op", "all good")  # no run cited
         with self.assertRaises(ValueError):
-            r.mgr.clear_halt(halt.halt_id, "op", "all good", bad.run_id)          # cites the failing run
+            r.mgr.clear_halt(halt.halt_id, "op", "all good", bad.run_id)  # cites the failing run
         r.mgr.clear_halt(halt.halt_id, "op-9", "ledgers agree after manual review", good.run_id)
         self.assertFalse(r.mgr.halted)
 
@@ -202,12 +229,15 @@ class GroupD_Reconciliation(unittest.TestCase):
         r.submit()
         book(r, r.advance(1))
         b = r.broker_view()
-        halt = r.mgr.record_reconciliation(recon(r, internal=LedgerView(b.cash + 1, b.positions, b.avg_costs)))
+        halt = r.mgr.record_reconciliation(
+            recon(r, internal=LedgerView(b.cash + 1, b.positions, b.avg_costs))
+        )
 
         def boom(*_a, **_k):
             raise ConnectionError("broker ledger unavailable mid-reconciliation")
+
         with self.assertRaises(ConnectionError):
-            reconcile_execution(r.mgr, r.opening, b, b, boom(), ())   # nothing is recorded
+            reconcile_execution(r.mgr, r.opening, b, b, boom(), ())  # nothing is recorded
         with self.assertRaises(ValueError):
             r.mgr.clear_halt(halt.halt_id, "op", "assumed fine", "recon_never_ran")
         self.assertTrue(r.mgr.halted)
@@ -228,16 +258,22 @@ class GroupD_Reconciliation(unittest.TestCase):
         req, _, _ = r.submit()
         book(r, r.advance(1))
         k = req.idempotency_key
-        r.mgr.apply_event(fill_event(k, synthetic_fill(k, 10, 50, fid="x1")))   # overfill -> quarantined, halted
+        r.mgr.apply_event(
+            fill_event(k, synthetic_fill(k, 10, 50, fid="x1"))
+        )  # overfill -> quarantined, halted
         res = recon(r)
         self.assertFalse(res.consistent)
         self.assertIn("UNRESOLVED_ORDER", kinds(res))
-        r.mgr.dismiss_quarantined(k, next(iter(r.mgr.record(k).quarantined)), "op-3", "no such fill at broker")
+        r.mgr.dismiss_quarantined(
+            k, next(iter(r.mgr.record(k).quarantined)), "op-3", "no such fill at broker"
+        )
         self.assertEqual(r.mgr.record(k).corrections[-1]["operator"], "op-3")
-        r.mgr.acknowledge_terminal_discrepancy(k, "op-3", "overfill report was spurious; broker shows 100/100")
+        r.mgr.acknowledge_terminal_discrepancy(
+            k, "op-3", "overfill report was spurious; broker shows 100/100"
+        )
         good = recon(r)
         r.mgr.record_reconciliation(good)
-        self.assertTrue(r.mgr.halted)                                   # still halted until explicitly cleared
+        self.assertTrue(r.mgr.halted)  # still halted until explicitly cleared
         for h in r.mgr.active_halts():
             r.mgr.clear_halt(h.halt_id, "op-3", "dismissed; ledgers agree", good.run_id)
         self.assertFalse(r.mgr.halted)
@@ -246,8 +282,14 @@ class GroupD_Reconciliation(unittest.TestCase):
 class SharedComparisonTests(unittest.TestCase):
     def test_original_two_ledger_messages_are_preserved(self):
         out = compare_cash_positions(Decimal(1), {"X": 1}, Decimal(2), {"X": 2, "Y": 1})
-        self.assertEqual(out, ["cash: portfolio 1 != broker 2", "position X: portfolio 1 != broker 2",
-                               "position Y: portfolio 0 != broker 1"])
+        self.assertEqual(
+            out,
+            [
+                "cash: portfolio 1 != broker 2",
+                "position X: portfolio 1 != broker 2",
+                "position Y: portfolio 0 != broker 1",
+            ],
+        )
 
 
 if __name__ == "__main__":

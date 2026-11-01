@@ -28,14 +28,17 @@ class PipelineLifecycleTests(unittest.TestCase):
         rows = [r for r in res.reconciliations if "execution_reconciliation" in r]
         self.assertTrue(rows, "no execution reconciliation rows recorded")
         for r in rows:
-            self.assertIn(r["execution_reconciliation"]["outcome"], ("CONSISTENT", "CONSISTENT_AFTER_SAFE_DUPLICATES"))
+            self.assertIn(
+                r["execution_reconciliation"]["outcome"],
+                ("CONSISTENT", "CONSISTENT_AFTER_SAFE_DUPLICATES"),
+            )
 
     def test_duplicate_fill_redelivery_is_never_double_booked(self):
         orig = SimulatedBrokerAdapter.advance
 
         def advance_twice_delivered(self, t, prices):
             reps = orig(self, t, prices)
-            return list(reps) + list(reps)           # the transport redelivers every fill report
+            return list(reps) + list(reps)  # the transport redelivers every fill report
 
         with mock.patch.object(SimulatedBrokerAdapter, "advance", advance_twice_delivered):
             dup = run()
@@ -58,10 +61,13 @@ class PipelineLifecycleTests(unittest.TestCase):
             res = run()
         self.assertIs(res.run.status, RunStatus.FAILED)
         self.assertIs(res.run.failure.category, FailureCategory.RECONCILIATION_REQUIRED)
-        self.assertEqual([o for o in res.orders if o["filled_quantity"] > 0], [])  # nothing was fabricated
+        self.assertEqual(
+            [o for o in res.orders if o["filled_quantity"] > 0], []
+        )  # nothing was fabricated
 
     def test_manager_type_is_the_existing_lifecycle_extension_not_a_second_state_machine(self):
         from domain.models.order import Order
+
         self.assertTrue(issubclass(OrderLifecycleManager, object))
         self.assertTrue(hasattr(Order, "transition_to"))
 

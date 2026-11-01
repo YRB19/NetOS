@@ -41,7 +41,20 @@ def weekly_bars(
                 c = override[(isin, w)]
             o = round(c * 0.995, 4)
             c = round(c, 4)
-            out.append(MarketData(isin, ts, o, round(max(o, c) * 1.01, 4), round(min(o, c) * 0.99, 4), c, 1000, "SYNTHETIC", start, "synthetic-v1"))
+            out.append(
+                MarketData(
+                    isin,
+                    ts,
+                    o,
+                    round(max(o, c) * 1.01, 4),
+                    round(min(o, c) * 0.99, 4),
+                    c,
+                    1000,
+                    "SYNTHETIC",
+                    start,
+                    "synthetic-v1",
+                )
+            )
     return out
 
 
@@ -112,4 +125,6 @@ from simulation import PipelineHarness  # noqa: E402
 
 class JournaledHarness(PipelineHarness):
     def run(self, *a, journal_factory=None, **kw):  # noqa: ANN002, ANN003
-        return super().run(*a, journal_factory=journal_factory or (lambda rid: InMemoryJournal(rid)), **kw)
+        return super().run(
+            *a, journal_factory=journal_factory or (lambda rid: InMemoryJournal(rid)), **kw
+        )

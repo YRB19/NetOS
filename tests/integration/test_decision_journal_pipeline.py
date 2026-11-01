@@ -92,7 +92,9 @@ class EndToEndReconstruction(unittest.TestCase):
         own = [e.event_type for e in c.events if e.decision_id == d.decision_id]
         self.assertLess(own.index(ET.ORDER_INTENT), own.index(ET.SUBMISSION_RESULT))
         self.assertLess(own.index(ET.FILL_RECORDED), own.index(ET.PORTFOLIO_SETTLED))
-        self.assertEqual((c.status, c.reconciliation_status, c.missing_references), ("FINALIZED", "OK", ()))
+        self.assertEqual(
+            (c.status, c.reconciliation_status, c.missing_references), ("FINALIZED", "OK", ())
+        )
         snap = c.sections["snapshot"][0].payload
         self.assertTrue(snap["snapshot_content_hash"] and snap["snapshot"]["feature_values"])
         fill = c.sections["fills"][0].payload
@@ -140,7 +142,9 @@ class NoTradeAndFailureOutcomes(unittest.TestCase):
         nt = next(s for s in r.list_decisions(1000) if s.terminal_state == "NO_TRADE")
         c = r.decision_chain(nt.decision_id)
         self.assertEqual(c.sections["order_intent"], ())
-        self.assertTrue(c.decision_record["rationale"] or c.sections["finalized"][0].payload["reason"])
+        self.assertTrue(
+            c.decision_record["rationale"] or c.sections["finalized"][0].payload["reason"]
+        )
         self.assertIsNone(c.decision_record["order_id"])
 
     def test_no_candidate_is_recorded_without_inventing_a_candidate(self):
@@ -152,7 +156,11 @@ class NoTradeAndFailureOutcomes(unittest.TestCase):
                 return getattr(self._i, n)
 
             def generate_candidate_trades(self, snaps, uni, prev):
-                return [c for c in self._i.generate_candidate_trades(snaps, uni, prev) if c.instrument_id != snaps[0].instrument_id]
+                return [
+                    c
+                    for c in self._i.generate_candidate_trades(snaps, uni, prev)
+                    if c.instrument_id != snaps[0].instrument_id
+                ]
 
         _, _, r = go(strat_wrap=Silent)
         nc = [s for s in r.list_decisions(1000) if s.terminal_state == "NO_CANDIDATE"]
@@ -166,10 +174,14 @@ class NoTradeAndFailureOutcomes(unittest.TestCase):
         vs = [s for s in r.list_decisions(1000) if s.terminal_state == "REJECTED_AT_RISK"]
         self.assertTrue(vs)
         c = r.decision_chain(vs[0].decision_id)
-        self.assertEqual((c.sections["sizing"], c.sections["order_intent"], c.sections["fills"]), ((), (), ()))
+        self.assertEqual(
+            (c.sections["sizing"], c.sections["order_intent"], c.sections["fills"]), ((), (), ())
+        )
         rr1 = next(k for k in c.sections["risk"][0].payload["checks"] if k["check_id"] == "RR-1")
         self.assertEqual(rr1["outcome"], "FAIL")
-        self.assertEqual(rr1["evidence"]["max_position_fraction"], "0.2")  # configured limit as active at the time
+        self.assertEqual(
+            rr1["evidence"]["max_position_fraction"], "0.2"
+        )  # configured limit as active at the time
         self.assertIn("target_notional", rr1["evidence"])  # observed input
         self.assertEqual(c.sections["risk"][0].payload["verdict"], "REJECT")
 
@@ -222,9 +234,13 @@ class NoTradeAndFailureOutcomes(unittest.TestCase):
         res, _, r = go(strat_wrap=Dup)
         self.assertIs(res.run.failure.category, FailureCategory.INVALID_CANDIDATE)
         self.assertIn("REJECTED_INVALID_CANDIDATE", states(r))
-        d = next(s for s in r.list_decisions(1000) if s.terminal_state == "REJECTED_INVALID_CANDIDATE")
+        d = next(
+            s for s in r.list_decisions(1000) if s.terminal_state == "REJECTED_INVALID_CANDIDATE"
+        )
         c = r.decision_chain(d.decision_id)
-        self.assertEqual(c.sections["candidate_rejected"][0].payload["error_code"], "INVALID_CANDIDATE")
+        self.assertEqual(
+            c.sections["candidate_rejected"][0].payload["error_code"], "INVALID_CANDIDATE"
+        )
         self.assertEqual(c.sections["order_intent"], ())
         self.assertTrue(r.events()[-1].event_type is ET.OPERATIONAL_FAILURE)
 
@@ -237,7 +253,10 @@ class NoTradeAndFailureOutcomes(unittest.TestCase):
                     done["n"] += 1
                     broker.inject_ambiguous_response(bid, "ack lost")
 
-        res, _, r = go(pc_over=dict(broker=broker_config(max_fill_fraction_per_bar=Decimal("0.4"))), broker_fault_injector=inject)
+        res, _, r = go(
+            pc_over=dict(broker=broker_config(max_fill_fraction_per_bar=Decimal("0.4"))),
+            broker_fault_injector=inject,
+        )
         self.assertIs(res.run.failure.category, FailureCategory.RECONCILIATION_REQUIRED)
         d = next(s for s in r.list_decisions(1000) if s.terminal_state == "RECONCILIATION_REQUIRED")
         c = r.decision_chain(d.decision_id)
@@ -266,7 +285,9 @@ class NoTradeAndFailureOutcomes(unittest.TestCase):
 class JournalFailureSafety(unittest.TestCase):
     def test_no_journal_means_no_run_and_no_broker_call(self):
         strat, b = tier2(0.3)
-        with mock.patch.object(SimulatedBrokerAdapter, "place_order", side_effect=AssertionError("broker called")) as pl:
+        with mock.patch.object(
+            SimulatedBrokerAdapter, "place_order", side_effect=AssertionError("broker called")
+        ) as pl:
             res = PipelineHarness().run(config(), strat, weekly_bars(), [universe()], pipeline(b))
         self.assertIs(res.run.status, RunStatus.FAILED)
         self.assertIs(res.run.failure.category, FailureCategory.JOURNAL_FAILURE)
@@ -279,7 +300,9 @@ class JournalFailureSafety(unittest.TestCase):
         self.assertIs(res.run.failure.category, FailureCategory.JOURNAL_FAILURE)
 
     def test_pre_submission_write_failure_means_broker_is_never_called(self):
-        with mock.patch.object(SimulatedBrokerAdapter, "place_order", side_effect=AssertionError("broker called")) as pl:
+        with mock.patch.object(
+            SimulatedBrokerAdapter, "place_order", side_effect=AssertionError("broker called")
+        ) as pl:
             res, j, _ = go(factory=lambda rid: FailAt(rid, ET.ORDER_INTENT))
         self.assertIs(res.run.failure.category, FailureCategory.JOURNAL_FAILURE)
         pl.assert_not_called()
@@ -303,17 +326,23 @@ class JournalFailureSafety(unittest.TestCase):
              mock.patch.object(OrderLifecycleManager, "halt_external", hspy):  # fmt: skip
             res, j, _ = go(factory=lambda rid: FailAt(rid, ET.SUBMISSION_RESULT))
         self.assertIs(res.run.failure.category, FailureCategory.JOURNAL_FAILURE)
-        self.assertEqual(len(seen["orders"]), 1, "no further risk-increasing order after the journal failure")
+        self.assertEqual(
+            len(seen["orders"]), 1, "no further risk-increasing order after the journal failure"
+        )
         self.assertEqual(seen["halts"], [("JOURNAL_FAILURE", seen["orders"][0])])
         found = seen["adapter"].find_order_by_client_key(seen["session"], seen["orders"][0])
-        self.assertIsNotNone(found, "the order that may have reached the broker is recoverable via existing lookup")
+        self.assertIsNotNone(
+            found, "the order that may have reached the broker is recoverable via existing lookup"
+        )
         self.assertNotIn(ET.PORTFOLIO_SETTLED, [e.event_type for e in j.events()])
         self.assertEqual(res.telemetry["journal_append_failures"], 1)
 
     def test_fill_record_write_failure_never_claims_settlement(self):
         res, j, _ = go(factory=lambda rid: FailAt(rid, ET.FILL_RECORDED))
         self.assertIs(res.run.failure.category, FailureCategory.JOURNAL_FAILURE)
-        self.assertEqual([e for e in j.events() if e.event_type in (ET.PORTFOLIO_SETTLED, ET.FILL_RECORDED)], [])
+        self.assertEqual(
+            [e for e in j.events() if e.event_type in (ET.PORTFOLIO_SETTLED, ET.FILL_RECORDED)], []
+        )
         self.assertIn("JOURNAL", str(res.run.failure.message).upper())
 
     def test_failed_run_reports_incomplete_decisions(self):
@@ -334,7 +363,9 @@ class EvidenceAndCompatibility(unittest.TestCase):
                 for k in e.payload["checks"]:
                     seen.add(k["check_id"])
                     self.assertTrue(k["evidence"], f"{k['check_id']} has no structured evidence")
-        self.assertTrue({"RR-1", "RR-2", "RR-3", "RR-4", "RR-5", "RR-6", "RR-7", "RR-8", "RR-9"} <= seen, seen)
+        self.assertTrue(
+            {"RR-1", "RR-2", "RR-3", "RR-4", "RR-5", "RR-6", "RR-7", "RR-8", "RR-9"} <= seen, seen
+        )
 
     def test_uncaptured_evidence_is_an_explicit_gap_not_reconstructed(self):
         self.assertEqual(RiskCheckResult("RR-1", True, "legacy-style").evidence, ())
@@ -349,7 +380,12 @@ class EvidenceAndCompatibility(unittest.TestCase):
         self.assertIn("risk_quantity_ceiling", e.payload)
 
     def test_legacy_decision_record_fixture_still_reads_and_serialises_identically(self):
-        fx = Path(__file__).resolve().parents[1] / "fixtures" / "legacy" / "decision_records_slice7.jsonl"
+        fx = (
+            Path(__file__).resolve().parents[1]
+            / "fixtures"
+            / "legacy"
+            / "decision_records_slice7.jsonl"
+        )
         lines = fx.read_text().splitlines()
         recs = [decision_record_from_dict(json.loads(x)) for x in lines]
         self.assertEqual(len(recs), 3)
@@ -357,7 +393,11 @@ class EvidenceAndCompatibility(unittest.TestCase):
         res = PipelineHarness().run(config(), strat, weekly_bars(), [universe()], pipeline(b),
                                     journal_factory=lambda rid: InMemoryJournal(rid))  # fmt: skip
         now = [dumps(x, indent=None) for x in res.run.decision_records[:3]]
-        self.assertEqual("".join(now), fx.read_text(), "DecisionRecord serialisation of existing artifacts is unchanged")
+        self.assertEqual(
+            "".join(now),
+            fx.read_text(),
+            "DecisionRecord serialisation of existing artifacts is unchanged",
+        )
 
     def test_unsupported_decision_record_payload_fails_with_clear_error(self):
         from observability.decision_log.events import JournalError
@@ -371,7 +411,10 @@ class EvidenceAndCompatibility(unittest.TestCase):
         res, _, _ = go()
         files = pipeline_files(res)
         self.assertIn("journal_ref.json", files)
-        self.assertEqual(json.loads(files["journal_ref.json"])["content_digest"], res.journal_ref["content_digest"])
+        self.assertEqual(
+            json.loads(files["journal_ref.json"])["content_digest"],
+            res.journal_ref["content_digest"],
+        )
         for legacy in ("pipeline.json", "risk_decisions.jsonl", "reconciliation.jsonl"):
             self.assertIn(legacy, files)
 

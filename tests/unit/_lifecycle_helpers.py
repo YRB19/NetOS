@@ -10,7 +10,12 @@ from domain.models.order_request import Fill, OrderRequest, OrderType
 from domain.models.risk_decision import RiskCheckResult, RiskDecision
 from risk_execution.broker.adapters.simulated import SimulatedBrokerAdapter
 from risk_execution.broker.interface import order_id_for_idempotency_key
-from risk_execution.order_lifecycle import BrokerEvent, EventKind, OrderLifecycleManager, event_from_fill_report
+from risk_execution.order_lifecycle import (
+    BrokerEvent,
+    EventKind,
+    OrderLifecycleManager,
+    event_from_fill_report,
+)
 from risk_execution.reconciliation import LedgerView
 from shared.versioning.identifiers import new_id
 from tests.unit._pipeline_helpers import broker_config
@@ -26,12 +31,22 @@ def day(n: int) -> datetime:
 
 def decision(qty: float = 100.0, verdict=RiskVerdict.APPROVE, rrv: str = RRV) -> RiskDecision:
     if verdict is RiskVerdict.APPROVE:
-        return RiskDecision(new_id(), (RiskCheckResult("RR-1", True, "ok"),), verdict, rrv, approved_qty=qty)
-    return RiskDecision(new_id(), (RiskCheckResult("RR-1", False, "no"),), verdict, rrv, reasons=("vetoed",))
+        return RiskDecision(
+            new_id(), (RiskCheckResult("RR-1", True, "ok"),), verdict, rrv, approved_qty=qty
+        )
+    return RiskDecision(
+        new_id(), (RiskCheckResult("RR-1", False, "no"),), verdict, rrv, reasons=("vetoed",)
+    )
 
 
-def request_for(rd: RiskDecision, qty: float = 100.0, side=Action.BUY, key: str | None = None,
-                otype=OrderType.MARKET, inst: str = A) -> OrderRequest:
+def request_for(
+    rd: RiskDecision,
+    qty: float = 100.0,
+    side=Action.BUY,
+    key: str | None = None,
+    otype=OrderType.MARKET,
+    inst: str = A,
+) -> OrderRequest:
     return OrderRequest(inst, side, qty, otype, rd.risk_decision_id, None, key or new_id())
 
 
@@ -59,16 +74,27 @@ class Rig:
         return self.broker.advance(day(n), {A: Decimal(price)})
 
     def fill_events(self, reports, ids=None):
-        return [event_from_fill_report(r, None if ids is None else ids[i]) for i, r in enumerate(reports)]
+        return [
+            event_from_fill_report(r, None if ids is None else ids[i])
+            for i, r in enumerate(reports)
+        ]
 
     def broker_view(self) -> LedgerView:
         snap = self.broker.ledger_snapshot()
         return LedgerView(snap["cash"], snap["positions"], snap["avg_costs"])
 
 
-def synthetic_fill(order_key: str, qty: float, price: float, ftype=FillType.PARTIAL, fid: str | None = None,
-                   ts: datetime | None = None) -> Fill:
-    return Fill(order_id_for_idempotency_key(order_key), qty, price, ts or day(1), ftype, fid or new_id())
+def synthetic_fill(
+    order_key: str,
+    qty: float,
+    price: float,
+    ftype=FillType.PARTIAL,
+    fid: str | None = None,
+    ts: datetime | None = None,
+) -> Fill:
+    return Fill(
+        order_id_for_idempotency_key(order_key), qty, price, ts or day(1), ftype, fid or new_id()
+    )
 
 
 def fill_event(key: str, fill: Fill, event_id: str | None = None) -> BrokerEvent:

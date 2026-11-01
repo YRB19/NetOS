@@ -59,8 +59,10 @@ class RiskEngineTests(unittest.TestCase):
         self.assertIs(d.final_verdict, RiskVerdict.APPROVE)
         self.assertEqual(d.risk_rule_version_id, self.e.risk_rule_version_id)
         self.assertEqual(d.candidate_trade_id, cand().candidate_id)
-        self.assertEqual({c.check_id for c in d.checks_evaluated},
-                         {"RR-CONFIG", "RR-1", "RR-2", "RR-3", "RR-4", "RR-5", "RR-6", "RR-7", "RR-8", "RR-9"})
+        self.assertEqual(
+            {c.check_id for c in d.checks_evaluated},
+            {"RR-CONFIG", "RR-1", "RR-2", "RR-3", "RR-4", "RR-5", "RR-6", "RR-7", "RR-8", "RR-9"},
+        )
         self.assertTrue(all(c.passed for c in d.checks_evaluated))
         self.assertEqual(d.approved_qty, 4000.0)  # 0.40 * 1,000,000 / 100 (per-position headroom)
 
@@ -76,8 +78,12 @@ class RiskEngineTests(unittest.TestCase):
         self.assertIn("RR-1", failed_ids(d))
 
     def test_rr2_leverage_limit(self):
-        e = RiskEngine(risk_config(max_leverage=Decimal("0.5"), max_gross_exposure_fraction=Decimal("1.0")))
-        d = e.evaluate(cand(hint=0.3), ctx(e, pending_intents=(PendingIntent(B, Action.BUY, 2000),)))
+        e = RiskEngine(
+            risk_config(max_leverage=Decimal("0.5"), max_gross_exposure_fraction=Decimal("1.0"))
+        )
+        d = e.evaluate(
+            cand(hint=0.3), ctx(e, pending_intents=(PendingIntent(B, Action.BUY, 2000),))
+        )
         self.assertIn("RR-2", failed_ids(d))
 
     def test_rr3_drawdown_halts_buy_but_not_sell(self):
@@ -85,7 +91,9 @@ class RiskEngineTests(unittest.TestCase):
         self.assertIn("RR-3", failed_ids(self.e.evaluate(cand(), c)))
         pf = PortfolioState(as_of_timestamp=T, positions=(Position(A, 100.0, 90.0),), cash_balance=1000.0,
                             source=PortfolioStateSource.SYSTEM_BELIEF)  # fmt: skip
-        sell = self.e.evaluate(cand(action=Action.SELL, hint=0.0), ctx(self.e, equity=Decimal("650000"), portfolio=pf))
+        sell = self.e.evaluate(
+            cand(action=Action.SELL, hint=0.0), ctx(self.e, equity=Decimal("650000"), portfolio=pf)
+        )
         self.assertIs(sell.final_verdict, RiskVerdict.APPROVE)
         self.assertEqual(sell.approved_qty, 100.0)
 
@@ -94,8 +102,14 @@ class RiskEngineTests(unittest.TestCase):
         self.assertIn("RR-3", failed_ids(d))
 
     def test_rr4_unknown_instrument_hard_veto(self):
-        d = self.e.evaluate(cand(inst="INE999X99999", input_snapshot_id="s"), ctx(self.e, snapshot_ids={"INE999X99999": "s"},
-                            reference_prices={A: Decimal(1), "INE999X99999": Decimal(100)}))
+        d = self.e.evaluate(
+            cand(inst="INE999X99999", input_snapshot_id="s"),
+            ctx(
+                self.e,
+                snapshot_ids={"INE999X99999": "s"},
+                reference_prices={A: Decimal(1), "INE999X99999": Decimal(100)},
+            ),
+        )
         self.assertIn("RR-4", failed_ids(d))
 
     def test_rr4_removed_instrument_exit_only_if_configured_and_held(self):
@@ -107,25 +121,45 @@ class RiskEngineTests(unittest.TestCase):
         strict = RiskEngine(risk_config(allow_exit_of_removed_instruments=False))
         d = strict.evaluate(c, ctx(strict, portfolio=pf, permitted_instrument_ids=frozenset({A})))
         self.assertIn("RR-4", failed_ids(d))
-        self.assertIn("RR-4", failed_ids(self.e.evaluate(cand(inst=B, input_snapshot_id="snap_2"),
-                                                          ctx(self.e, permitted_instrument_ids=frozenset({A})))))
+        self.assertIn(
+            "RR-4",
+            failed_ids(
+                self.e.evaluate(
+                    cand(inst=B, input_snapshot_id="snap_2"),
+                    ctx(self.e, permitted_instrument_ids=frozenset({A})),
+                )
+            ),
+        )
 
     def test_rr5_order_rate_limit(self):
         e = RiskEngine(risk_config(max_orders_per_window=3, order_rate_window_seconds=60))
         recent = tuple(T - timedelta(seconds=s) for s in (0, 10, 59))
-        self.assertIn("RR-5", failed_ids(e.evaluate(cand(), ctx(e, recent_order_timestamps=recent))))
+        self.assertIn(
+            "RR-5", failed_ids(e.evaluate(cand(), ctx(e, recent_order_timestamps=recent)))
+        )
         old = tuple(T - timedelta(seconds=s) for s in (60, 100, 200))  # window is (T-60s, T]
-        self.assertIs(e.evaluate(cand(), ctx(e, recent_order_timestamps=old)).final_verdict, RiskVerdict.APPROVE)
+        self.assertIs(
+            e.evaluate(cand(), ctx(e, recent_order_timestamps=old)).final_verdict,
+            RiskVerdict.APPROVE,
+        )
 
     def test_rr6_account_scope(self):
-        self.assertIn("RR-6", failed_ids(self.e.evaluate(cand(), ctx(self.e, account_scope="someone-else"))))
+        self.assertIn(
+            "RR-6", failed_ids(self.e.evaluate(cand(), ctx(self.e, account_scope="someone-else")))
+        )
         self.assertIn("RR-6", failed_ids(self.e.evaluate(cand(), ctx(self.e, account_scope=None))))
 
     def test_rr7_attribution(self):
-        for over in ({"research_run_id": None}, {"config_version_id": ""},
-                     {"snapshot_ids": {A: "not-the-candidates-snapshot"}}, {"snapshot_ids": None},
-                     {"evaluated_at": T + timedelta(days=1)}):
-            self.assertIn("RR-7", failed_ids(self.e.evaluate(cand(), ctx(self.e, **over))), msg=str(over))
+        for over in (
+            {"research_run_id": None},
+            {"config_version_id": ""},
+            {"snapshot_ids": {A: "not-the-candidates-snapshot"}},
+            {"snapshot_ids": None},
+            {"evaluated_at": T + timedelta(days=1)},
+        ):
+            self.assertIn(
+                "RR-7", failed_ids(self.e.evaluate(cand(), ctx(self.e, **over))), msg=str(over)
+            )
         with self.assertRaises(ValueError):  # the domain type itself refuses missing provenance
             cand(strategy_version_id="  ")
         c = cand()
@@ -142,19 +176,31 @@ class RiskEngineTests(unittest.TestCase):
                 self.assertIn("RR-8", failed_ids(d))
 
     def test_rr9_change_requests_for_protected_items_vetoed(self):
-        for target in ("risk_rules", "kill_switch", "operator_constraints", "execution_authority", "autonomy_level"):
-            d = self.e.evaluate(cand(), ctx(self.e, requested_changes=(ChangeRequest(target, "strategy"),)))
+        for target in (
+            "risk_rules",
+            "kill_switch",
+            "operator_constraints",
+            "execution_authority",
+            "autonomy_level",
+        ):
+            d = self.e.evaluate(
+                cand(), ctx(self.e, requested_changes=(ChangeRequest(target, "strategy"),))
+            )
             self.assertIs(d.final_verdict, RiskVerdict.REJECT)
             self.assertIn("RR-9", failed_ids(d), msg=target)
 
     def test_rr9_tampered_config_detected_by_hash(self):
-        object.__setattr__(self.e._config, "max_position_fraction", Decimal("1.0"))  # simulated tampering
+        object.__setattr__(
+            self.e._config, "max_position_fraction", Decimal("1.0")
+        )  # simulated tampering
         d = self.e.evaluate(cand(hint=0.9), ctx(self.e))
         self.assertIs(d.final_verdict, RiskVerdict.REJECT)
         self.assertIn("RR-9", failed_ids(d))
 
     def test_rr9_wrong_expected_version_vetoed(self):
-        d = self.e.evaluate(cand(), ctx(self.e, expected_risk_rule_version_id="someone-elses-rules"))
+        d = self.e.evaluate(
+            cand(), ctx(self.e, expected_risk_rule_version_id="someone-elses-rules")
+        )
         self.assertIn("RR-9", failed_ids(d))
 
     def test_config_is_immutable(self):
@@ -167,16 +213,36 @@ class FailClosedTests(unittest.TestCase):
         self.e = RiskEngine(risk_config())
 
     def test_every_missing_state_vetoes(self):
-        for field in ("portfolio", "equity", "peak_equity", "reference_prices", "permitted_instrument_ids",
-                      "account_scope", "kill_switch", "recent_order_timestamps", "snapshot_ids",
-                      "research_run_id", "config_version_id", "expected_risk_rule_version_id", "evaluated_at"):
+        for field in (
+            "portfolio",
+            "equity",
+            "peak_equity",
+            "reference_prices",
+            "permitted_instrument_ids",
+            "account_scope",
+            "kill_switch",
+            "recent_order_timestamps",
+            "snapshot_ids",
+            "research_run_id",
+            "config_version_id",
+            "expected_risk_rule_version_id",
+            "evaluated_at",
+        ):
             d = self.e.evaluate(cand(), ctx(self.e, **{field: None}))
             self.assertIs(d.final_verdict, RiskVerdict.REJECT, msg=field)
             self.assertIsNone(d.approved_qty, msg=field)
 
     def test_empty_universe_and_missing_price_veto(self):
-        self.assertIs(self.e.evaluate(cand(), ctx(self.e, permitted_instrument_ids=frozenset())).final_verdict, RiskVerdict.REJECT)
-        self.assertIs(self.e.evaluate(cand(), ctx(self.e, reference_prices={})).final_verdict, RiskVerdict.REJECT)
+        self.assertIs(
+            self.e.evaluate(
+                cand(), ctx(self.e, permitted_instrument_ids=frozenset())
+            ).final_verdict,
+            RiskVerdict.REJECT,
+        )
+        self.assertIs(
+            self.e.evaluate(cand(), ctx(self.e, reference_prices={})).final_verdict,
+            RiskVerdict.REJECT,
+        )
 
     def test_invalid_candidate_objects_veto_without_raising(self):
         for bad in (None, "BUY", object(), {"action": "BUY"}):
@@ -199,13 +265,18 @@ class FailClosedTests(unittest.TestCase):
             self.assertIs(d.final_verdict, RiskVerdict.REJECT, msg=str(h))
 
     def test_sell_with_nothing_held_vetoed_and_hold_never_approved(self):
-        self.assertIs(self.e.evaluate(cand(action=Action.SELL, hint=0.0), ctx(self.e)).final_verdict, RiskVerdict.REJECT)
+        self.assertIs(
+            self.e.evaluate(cand(action=Action.SELL, hint=0.0), ctx(self.e)).final_verdict,
+            RiskVerdict.REJECT,
+        )
         h = self.e.evaluate(cand(action=Action.HOLD, hint=None), ctx(self.e))
         self.assertIs(h.final_verdict, RiskVerdict.REJECT)
         self.assertIn("RR-NO-EXECUTION", failed_ids(h))
 
     def test_veto_always_names_the_rule(self):
-        d = self.e.evaluate(cand(), ctx(self.e, kill_switch=KillSwitchState.ACTIVE, account_scope="x"))
+        d = self.e.evaluate(
+            cand(), ctx(self.e, kill_switch=KillSwitchState.ACTIVE, account_scope="x")
+        )
         self.assertTrue(all(r.split(":")[0].startswith("RR-") for r in d.reasons))
         self.assertEqual({r.split(":")[0] for r in d.reasons}, {"RR-8", "RR-6"})
 
@@ -214,11 +285,19 @@ class VersioningTests(unittest.TestCase):
     def test_version_changes_with_any_value_and_is_deterministic(self):
         a = risk_config().risk_rule_version().version_id
         self.assertEqual(a, risk_config().risk_rule_version().version_id)
-        for over in (dict(max_position_fraction=Decimal("0.41")), dict(max_leverage=Decimal("1.1")),
-                     dict(max_drawdown_fraction=Decimal("0.29")), dict(max_orders_per_window=99),
-                     dict(order_rate_window_seconds=1), dict(permitted_account_scope="b"),
-                     dict(allow_exit_of_removed_instruments=False), dict(label="risk_rules_v2")):
-            self.assertNotEqual(a, risk_config(**over).risk_rule_version().version_id, msg=str(over))
+        for over in (
+            dict(max_position_fraction=Decimal("0.41")),
+            dict(max_leverage=Decimal("1.1")),
+            dict(max_drawdown_fraction=Decimal("0.29")),
+            dict(max_orders_per_window=99),
+            dict(order_rate_window_seconds=1),
+            dict(permitted_account_scope="b"),
+            dict(allow_exit_of_removed_instruments=False),
+            dict(label="risk_rules_v2"),
+        ):
+            self.assertNotEqual(
+                a, risk_config(**over).risk_rule_version().version_id, msg=str(over)
+            )
 
     def test_configuration_version_is_deterministic(self):
         a, b = risk_config().configuration_version(), risk_config().configuration_version()
