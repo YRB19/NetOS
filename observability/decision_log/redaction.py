@@ -17,7 +17,9 @@ _SENSITIVE_KEY = re.compile(
     r"access[_-]?key|client[_-]?secret|totp|pin\b|session)", re.IGNORECASE)  # fmt: skip
 _TEXT_PATTERNS = (
     re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"),
-    re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?token|authorization)\s*[=:]\s*\S+"),
+    re.compile(
+        r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?token|authorization)\s*[=:]\s*\S+"
+    ),
     re.compile(r"\b[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b"),  # JWT-shaped
     re.compile(r"\b(sk|pk|ak|tok|key)[-_][A-Za-z0-9]{12,}\b"),
 )
@@ -35,7 +37,10 @@ def sanitize(obj: object, _depth: int = 0) -> object:
     if _depth > 20:
         return REDACTED
     if isinstance(obj, Mapping):
-        return {str(k): (REDACTED if _SENSITIVE_KEY.search(str(k)) else sanitize(v, _depth + 1)) for k, v in obj.items()}
+        return {
+            str(k): (REDACTED if _SENSITIVE_KEY.search(str(k)) else sanitize(v, _depth + 1))
+            for k, v in obj.items()
+        }
     if isinstance(obj, (list, tuple)):
         return [sanitize(v, _depth + 1) for v in obj]
     if isinstance(obj, str):

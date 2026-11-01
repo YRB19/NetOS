@@ -73,12 +73,20 @@ class EventType(str, Enum):  # noqa: UP042
 # Required payload keys per event type: the defined (minimal) schema, enforced at append time.
 PAYLOAD_REQUIRED_KEYS: dict[EventType, frozenset[str]] = {
     EventType.DECISION_STARTED: frozenset({"instrument_id", "cycle_timestamp", "run_context"}),
-    EventType.INPUT_SNAPSHOT_LINKED: frozenset({"snapshot_id", "snapshot_content_hash", "snapshot"}),
-    EventType.CANDIDATE_EMITTED: frozenset({"candidate_id", "action", "rationale", "strategy_version_id"}),
+    EventType.INPUT_SNAPSHOT_LINKED: frozenset(
+        {"snapshot_id", "snapshot_content_hash", "snapshot"}
+    ),
+    EventType.CANDIDATE_EMITTED: frozenset(
+        {"candidate_id", "action", "rationale", "strategy_version_id"}
+    ),
     EventType.CANDIDATE_REJECTED: frozenset({"reason", "error_code"}),
-    EventType.RISK_EVALUATED: frozenset({"risk_decision_id", "verdict", "risk_rule_version_id", "checks"}),
+    EventType.RISK_EVALUATED: frozenset(
+        {"risk_decision_id", "verdict", "risk_rule_version_id", "checks"}
+    ),
     EventType.SIZING_EVALUATED: frozenset({"outcome", "reason", "inputs", "quantity"}),
-    EventType.ORDER_INTENT: frozenset({"idempotency_key", "instrument_id", "side", "quantity", "risk_decision_id"}),
+    EventType.ORDER_INTENT: frozenset(
+        {"idempotency_key", "instrument_id", "side", "quantity", "risk_decision_id"}
+    ),
     EventType.SUBMISSION_RESULT: frozenset({"idempotency_key", "outcome"}),
     EventType.ORDER_TRANSITION: frozenset({"order_id", "from_state", "to_state"}),
     EventType.BROKER_EVENT: frozenset({"kind", "broker_order_id"}),
@@ -128,7 +136,9 @@ class JournalEvent:
     producer: str
     producer_version: str
     event_time: str | None  # when the thing happened (simulated/market time); None = unknown
-    data_available_at: str | None  # when the underlying data became available; None = unknown/not applicable
+    data_available_at: (
+        str | None
+    )  # when the underlying data became available; None = unknown/not applicable
     recorded_at: str  # when the journal recorded it (injected clock) - distinct from event_time
     payload: dict
     prev_hash: str
@@ -178,4 +188,6 @@ def event_from_dict(d: dict) -> JournalEvent:
             event_hash=d["event_hash"],
         )  # fmt: skip
     except (KeyError, ValueError, TypeError) as e:
-        raise JournalError(ErrorCode.JOURNAL_CORRUPT, f"malformed journal record: {type(e).__name__}: {e}") from e
+        raise JournalError(
+            ErrorCode.JOURNAL_CORRUPT, f"malformed journal record: {type(e).__name__}: {e}"
+        ) from e

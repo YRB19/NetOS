@@ -63,7 +63,9 @@ def content_digest_of(events: list[JournalEvent]) -> str:
     return hash_bytes(canonical_json([e.content_fingerprint() for e in events]).encode("utf-8"))
 
 
-def verify_lines(lines: list[str], run_id: str | None = None) -> tuple[list[JournalEvent], VerificationReport]:
+def verify_lines(
+    lines: list[str], run_id: str | None = None
+) -> tuple[list[JournalEvent], VerificationReport]:
     """Parse + verify raw JSONL lines, collecting EVERY problem (no repair, no skipping)."""
     errs: list[tuple[str, str]] = []
     events: list[JournalEvent] = []
@@ -71,26 +73,58 @@ def verify_lines(lines: list[str], run_id: str | None = None) -> tuple[list[Jour
         try:
             events.append(event_from_dict(json.loads(line)))
         except json.JSONDecodeError as e:
-            errs.append((ErrorCode.JOURNAL_CORRUPT.value, f"line {n}: not valid JSON ({e.msg}); truncated or corrupt"))
+            errs.append(
+                (
+                    ErrorCode.JOURNAL_CORRUPT.value,
+                    f"line {n}: not valid JSON ({e.msg}); truncated or corrupt",
+                )
+            )
         except JournalError as e:
             errs.append((e.code.value, f"line {n}: {e.message}"))
     seen: dict[str, int] = {}
     prev = GENESIS_HASH
     for i, ev in enumerate(events, 1):
         if run_id is not None and ev.run_id != run_id:
-            errs.append((ErrorCode.JOURNAL_CORRUPT.value, f"event {ev.event_id}: run_id {ev.run_id!r} != stream {run_id!r}"))
+            errs.append(
+                (
+                    ErrorCode.JOURNAL_CORRUPT.value,
+                    f"event {ev.event_id}: run_id {ev.run_id!r} != stream {run_id!r}",
+                )
+            )
         if ev.event_id in seen:
-            errs.append((ErrorCode.JOURNAL_DUPLICATE_EVENT_ID.value, f"event_id {ev.event_id} repeated (sequences {seen[ev.event_id]}, {ev.sequence})"))
+            errs.append(
+                (
+                    ErrorCode.JOURNAL_DUPLICATE_EVENT_ID.value,
+                    f"event_id {ev.event_id} repeated (sequences {seen[ev.event_id]}, {ev.sequence})",
+                )
+            )
         seen.setdefault(ev.event_id, ev.sequence)
         if ev.sequence != i:
-            errs.append((ErrorCode.JOURNAL_SEQUENCE_GAP.value, f"expected sequence {i}, found {ev.sequence} (event {ev.event_id})"))
+            errs.append(
+                (
+                    ErrorCode.JOURNAL_SEQUENCE_GAP.value,
+                    f"expected sequence {i}, found {ev.sequence} (event {ev.event_id})",
+                )
+            )
         if ev.prev_hash != prev:
-            errs.append((ErrorCode.JOURNAL_HASH_MISMATCH.value, f"sequence {ev.sequence}: prev_hash does not match preceding event"))
+            errs.append(
+                (
+                    ErrorCode.JOURNAL_HASH_MISMATCH.value,
+                    f"sequence {ev.sequence}: prev_hash does not match preceding event",
+                )
+            )
         if compute_event_hash(ev.hashable_dict()) != ev.event_hash:
-            errs.append((ErrorCode.JOURNAL_HASH_MISMATCH.value, f"sequence {ev.sequence}: event_hash does not match content"))
+            errs.append(
+                (
+                    ErrorCode.JOURNAL_HASH_MISMATCH.value,
+                    f"sequence {ev.sequence}: event_hash does not match content",
+                )
+            )
         prev = ev.event_hash
     head = events[-1].event_hash if events else GENESIS_HASH
-    return events, VerificationReport(not errs, len(events), head, content_digest_of(events), tuple(errs))
+    return events, VerificationReport(
+        not errs, len(events), head, content_digest_of(events), tuple(errs)
+    )
 
 
 def read_journal_file(path: Path | str) -> tuple[list[JournalEvent], VerificationReport]:
@@ -104,10 +138,17 @@ def read_journal_file(path: Path | str) -> tuple[list[JournalEvent], Verificatio
     if lines and lines[-1] == "":
         lines.pop()
     elif raw:
-        errs.append((ErrorCode.JOURNAL_CORRUPT.value, "file does not end with a newline: truncated final record"))
+        errs.append(
+            (
+                ErrorCode.JOURNAL_CORRUPT.value,
+                "file does not end with a newline: truncated final record",
+            )
+        )
     events, rep = verify_lines(lines)
     if errs:
-        rep = VerificationReport(False, rep.event_count, rep.head_hash, rep.content_digest, tuple(errs) + rep.errors)
+        rep = VerificationReport(
+            False, rep.event_count, rep.head_hash, rep.content_digest, tuple(errs) + rep.errors
+        )
     return events, rep
 
 
@@ -158,32 +199,72 @@ class DecisionJournal:
                 "schema_version": SCHEMA_VERSION}  # fmt: skip
 
     # --- write --------------------------------------------------------------
-    def append(self, event_type: EventType, event_id: str, payload: dict, *, decision_id: str | None = None,
-               links: dict | None = None, correlation_id: str, producer: str, producer_version: str,
-               event_time: datetime | None = None, data_available_at: datetime | None = None) -> JournalEvent:  # noqa: PLR0913
+    def append(
+        self,
+        event_type: EventType,
+        event_id: str,
+        payload: dict,
+        *,
+        decision_id: str | None = None,
+        links: dict | None = None,
+        correlation_id: str,
+        producer: str,
+        producer_version: str,
+        event_time: datetime | None = None,
+        data_available_at: datetime | None = None,
+    ) -> JournalEvent:  # noqa: PLR0913
         if self._failed:
-            raise JournalError(ErrorCode.JOURNAL_CLOSED_AFTER_FAILURE, "journal refused: an earlier write failed")
+            raise JournalError(
+                ErrorCode.JOURNAL_CLOSED_AFTER_FAILURE, "journal refused: an earlier write failed"
+            )
         if not isinstance(event_type, EventType) or not event_id or not isinstance(payload, dict):
-            raise JournalError(ErrorCode.JOURNAL_INVALID_EVENT, "event_type/event_id/payload invalid")
+            raise JournalError(
+                ErrorCode.JOURNAL_INVALID_EVENT, "event_type/event_id/payload invalid"
+            )
         missing = PAYLOAD_REQUIRED_KEYS[event_type] - set(payload)
         if missing:
-            raise JournalError(ErrorCode.JOURNAL_INVALID_EVENT, f"{event_type.value} payload missing keys {sorted(missing)}")
+            raise JournalError(
+                ErrorCode.JOURNAL_INVALID_EVENT,
+                f"{event_type.value} payload missing keys {sorted(missing)}",
+            )
         norm_payload = sanitize(normalize(payload))
         norm_links = sanitize(normalize(links or {}))
         probe = JournalEvent(
-            SCHEMA_VERSION, event_id, self.run_id, 0, event_type, decision_id, norm_links, correlation_id,  # type: ignore[arg-type]
-            producer, producer_version, _iso(event_time), _iso(data_available_at), "", norm_payload, "", "",  # type: ignore[arg-type]
+            SCHEMA_VERSION,
+            event_id,
+            self.run_id,
+            0,
+            event_type,
+            decision_id,
+            norm_links,
+            correlation_id,  # type: ignore[arg-type]
+            producer,
+            producer_version,
+            _iso(event_time),
+            _iso(data_available_at),
+            "",
+            norm_payload,
+            "",
+            "",  # type: ignore[arg-type]
         )
         existing = self._by_id.get(event_id)
         if existing is not None:
             if existing.content_fingerprint() == probe.content_fingerprint():
                 return existing  # idempotent re-delivery: no second event, no second effect
-            raise JournalError(ErrorCode.JOURNAL_EVENT_CONFLICT, f"event_id {event_id} reused with a different payload")
+            raise JournalError(
+                ErrorCode.JOURNAL_EVENT_CONFLICT,
+                f"event_id {event_id} reused with a different payload",
+            )
         t0 = time.perf_counter()
         seq = len(self._events) + 1
         prev = self.head_hash
         recorded = _iso(self._clock()) or ""
-        hashable = {**probe.content_dict(), "sequence": seq, "recorded_at": recorded, "prev_hash": prev}
+        hashable = {
+            **probe.content_dict(),
+            "sequence": seq,
+            "recorded_at": recorded,
+            "prev_hash": prev,
+        }
         ev = JournalEvent(SCHEMA_VERSION, event_id, self.run_id, seq, event_type, decision_id, norm_links,  # type: ignore[arg-type]
                           correlation_id, producer, producer_version, probe.event_time, probe.data_available_at,
                           recorded, norm_payload, prev, compute_event_hash(hashable))  # fmt: skip
@@ -192,7 +273,9 @@ class DecisionJournal:
         except Exception as e:  # noqa: BLE001 - any persistence failure is fatal for this journal object
             self._failed = True
             self.append_failures += 1
-            raise JournalError(ErrorCode.JOURNAL_WRITE_FAILED, f"append failed: {type(e).__name__}") from e
+            raise JournalError(
+                ErrorCode.JOURNAL_WRITE_FAILED, f"append failed: {type(e).__name__}"
+            ) from e
         self._events.append(ev)
         self._by_id[event_id] = ev
         self.append_latencies_ms.append((time.perf_counter() - t0) * 1000.0)
@@ -210,15 +293,22 @@ def _iso(dt: datetime | None) -> str | None:
 class FileDecisionJournal(DecisionJournal):
     """Production durable backend (JSONL + fsync). Re-opening verifies the whole chain and fails closed."""
 
-    def __init__(self, root: Path | str, run_id: str, clock: Callable[[], datetime] = utc_now) -> None:
+    def __init__(
+        self, root: Path | str, run_id: str, clock: Callable[[], datetime] = utc_now
+    ) -> None:
         super().__init__(run_id, clock)
         self.path = journal_path(root, run_id)
         if self.path.exists():
             events, rep = read_journal_file(self.path)
             if not rep.ok:
-                raise JournalError(ErrorCode(rep.errors[0][0]), f"existing journal failed verification: {rep.errors[0][1]}")
+                raise JournalError(
+                    ErrorCode(rep.errors[0][0]),
+                    f"existing journal failed verification: {rep.errors[0][1]}",
+                )
             if any(e.run_id != run_id for e in events):
-                raise JournalError(ErrorCode.JOURNAL_CORRUPT, "existing journal belongs to a different run")
+                raise JournalError(
+                    ErrorCode.JOURNAL_CORRUPT, "existing journal belongs to a different run"
+                )
             self._load(events)
 
     def _persist(self, line: str) -> None:

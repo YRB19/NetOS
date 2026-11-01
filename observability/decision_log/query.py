@@ -11,7 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from observability.decision_log.events import ErrorCode, EventType, JournalError, JournalEvent, canonical_json
+from observability.decision_log.events import (
+    ErrorCode,
+    EventType,
+    JournalError,
+    JournalEvent,
+    canonical_json,
+)
 from observability.decision_log.journal import (
     DecisionJournal,
     VerificationReport,
@@ -71,10 +77,14 @@ class JournalReader:
         self._by_id = {e.event_id: e for e in self._events}
 
     @classmethod
-    def from_file(cls, root: Path | str, run_id: str, *, allow_unverified: bool = False) -> JournalReader:
+    def from_file(
+        cls, root: Path | str, run_id: str, *, allow_unverified: bool = False
+    ) -> JournalReader:
         events, rep = read_journal_file(journal_path(root, run_id))
         if not rep.ok and not allow_unverified:
-            raise JournalError(ErrorCode(rep.errors[0][0]), f"journal failed verification: {rep.errors[0][1]}")
+            raise JournalError(
+                ErrorCode(rep.errors[0][0]), f"journal failed verification: {rep.errors[0][1]}"
+            )
         return cls(events, rep, run_id)
 
     @classmethod
@@ -103,12 +113,20 @@ class JournalReader:
 
     def list_decisions(self, limit: int = 100, offset: int = 0) -> list[DecisionSummary]:
         if limit < 1 or limit > MAX_PAGE or offset < 0:
-            raise JournalError(ErrorCode.JOURNAL_INVALID_EVENT, f"limit must be 1..{MAX_PAGE} and offset >= 0")
+            raise JournalError(
+                ErrorCode.JOURNAL_INVALID_EVENT, f"limit must be 1..{MAX_PAGE} and offset >= 0"
+            )
         order: list[str] = []
         for e in self._events:
-            if e.event_type is EventType.DECISION_STARTED and e.decision_id and e.decision_id not in order:
+            if (
+                e.event_type is EventType.DECISION_STARTED
+                and e.decision_id
+                and e.decision_id not in order
+            ):
                 order.append(e.decision_id)
-        return [self._summary(d) for d in order[offset: offset + limit]]  # stable: journal sequence order
+        return [
+            self._summary(d) for d in order[offset : offset + limit]
+        ]  # stable: journal sequence order
 
     def _summary(self, decision_id: str) -> DecisionSummary:
         evs = self.events_for_decision(decision_id)
@@ -154,10 +172,14 @@ class JournalReader:
         if risk:
             versions["risk_rule_version_id"] = risk[0].payload.get("risk_rule_version_id")
         if snap:
-            versions["data_snapshot_version"] = snap[0].payload["snapshot"].get("data_snapshot_version")
+            versions["data_snapshot_version"] = (
+                snap[0].payload["snapshot"].get("data_snapshot_version")
+            )
             versions["feature_set_version"] = snap[0].payload["snapshot"].get("feature_set_version")
         missing = self._missing(decision_id, record, sections)
-        recon_status = "NOT_RECORDED" if not recon else ("OK" if recon[-1].payload["ok"] else "BLOCKED")
+        recon_status = (
+            "NOT_RECORDED" if not recon else ("OK" if recon[-1].payload["ok"] else "BLOCKED")
+        )
         if any(not r.payload["ok"] for r in recon):
             recon_status = "BLOCKED"
         own = [e for e in evs if e.decision_id == decision_id]
@@ -228,7 +250,9 @@ def decision_record_from_dict(d: dict):
     from domain.models.order_request import Fill
 
     if d.get("__type__") not in (None, "DecisionRecord"):
-        raise JournalError(ErrorCode.JOURNAL_UNSUPPORTED_SCHEMA, f"not a DecisionRecord: {d.get('__type__')!r}")
+        raise JournalError(
+            ErrorCode.JOURNAL_UNSUPPORTED_SCHEMA, f"not a DecisionRecord: {d.get('__type__')!r}"
+        )
 
     def dt(v):  # noqa: ANN001
         return None if v is None else datetime.fromisoformat(v)
@@ -252,4 +276,7 @@ def decision_record_from_dict(d: dict):
             finalized_at=dt(d.get("finalized_at")),
         )  # fmt: skip
     except (KeyError, ValueError, TypeError) as e:
-        raise JournalError(ErrorCode.JOURNAL_UNSUPPORTED_SCHEMA, f"cannot read DecisionRecord: {type(e).__name__}: {e}") from e
+        raise JournalError(
+            ErrorCode.JOURNAL_UNSUPPORTED_SCHEMA,
+            f"cannot read DecisionRecord: {type(e).__name__}: {e}",
+        ) from e
