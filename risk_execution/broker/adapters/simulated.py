@@ -183,7 +183,9 @@ class SimulatedBrokerAdapter:
         self._check(session)
         if broker_order_id is not None:
             return tuple(self._get(broker_order_id).fills)
-        return tuple(f for bo in sorted(self._orders.values(), key=lambda b: b.seq) for f in bo.fills)
+        return tuple(
+            f for bo in sorted(self._orders.values(), key=lambda b: b.seq) for f in bo.fills
+        )
 
     # ----------------------------------------------------------------- orders
     def place_order(self, session: BrokerSession, request: OrderRequest) -> OrderStatus:
@@ -219,7 +221,9 @@ class SimulatedBrokerAdapter:
         else:
             order.last_broker_response = "ACKNOWLEDGED"
             order.transition_to(OrderState.ACKNOWLEDGED, at=now, detail="accepted")
-        if fault == "FAIL_AFTER_ACCEPT":  # broker accepted, but the caller never receives the response
+        if (
+            fault == "FAIL_AFTER_ACCEPT"
+        ):  # broker accepted, but the caller never receives the response
             raise TimeoutError("simulated: response lost after acceptance")
         return self._status(bo)
 
@@ -231,7 +235,9 @@ class SimulatedBrokerAdapter:
             return "fractional quantity unsupported"
         return None
 
-    def modify_order(self, session: BrokerSession, broker_order_id: str, changes: dict) -> OrderStatus:
+    def modify_order(
+        self, session: BrokerSession, broker_order_id: str, changes: dict
+    ) -> OrderStatus:
         self._check(session)
         raise BrokerOperationNotSupported("modify_order is out of scope for the Slice 6 simulator")
 
@@ -249,13 +255,17 @@ class SimulatedBrokerAdapter:
             raise ValueError(kind)
         self._faults.append(kind)
 
-    def find_order_by_client_key(self, session: BrokerSession, idempotency_key: str) -> OrderStatus | None:
+    def find_order_by_client_key(
+        self, session: BrokerSession, idempotency_key: str
+    ) -> OrderStatus | None:
         """Authoritative lookup by client order id (None = the broker never received it). Slice 7."""
         self._check(session)
         bid = self._by_key.get(idempotency_key)
         return None if bid is None else self._status(self._orders[bid])
 
-    def inject_ambiguous_response(self, broker_order_id: str, detail: str = "ambiguous") -> OrderStatus:
+    def inject_ambiguous_response(
+        self, broker_order_id: str, detail: str = "ambiguous"
+    ) -> OrderStatus:
         """FAULT-INJECTION HOOK (tests only): force RECONCILIATION_REQUIRED."""
         bo = self._get(broker_order_id)
         bo.order.last_broker_response = detail
@@ -301,11 +311,14 @@ class SimulatedBrokerAdapter:
                 price=float(price),
                 timestamp=timestamp,
                 fill_type=FillType.FULL if done else FillType.PARTIAL,
-                fill_id="fill_" + hash_json_stable([bo.order.order_id, timestamp.isoformat(), bo.filled])[:24],
+                fill_id="fill_"
+                + hash_json_stable([bo.order.order_id, timestamp.isoformat(), bo.filled])[:24],
             )
             new_state = OrderState.FILLED if done else OrderState.PARTIALLY_FILLED
             if bo.order.state is not new_state:
-                bo.order.transition_to(new_state, at=timestamp, detail=f"filled {bo.filled}/{bo.quantity}")
+                bo.order.transition_to(
+                    new_state, at=timestamp, detail=f"filled {bo.filled}/{bo.quantity}"
+                )
             bo.order.last_broker_response = new_state.value
             rep = BrokerFillReport(fill, est, bo.order.broker_order_id or "", r.idempotency_key,
                                    r.risk_decision_id, new_state, ADAPTER_ID, ADAPTER_VERSION)  # fmt: skip
@@ -318,9 +331,13 @@ class SimulatedBrokerAdapter:
         if bo.order.state is OrderState.ACKNOWLEDGED:
             bo.order.transition_to(OrderState.REJECTED, at=ts, detail=why)
         else:  # partially filled: the unfillable remainder is cancelled
-            bo.order.transition_to(OrderState.CANCELLED, at=ts, detail=why + " (remainder cancelled)")
+            bo.order.transition_to(
+                OrderState.CANCELLED, at=ts, detail=why + " (remainder cancelled)"
+            )
 
-    def _book(self, r: OrderRequest, q: int, price: Decimal, turnover: Decimal, cost: Decimal) -> None:
+    def _book(
+        self, r: OrderRequest, q: int, price: Decimal, turnover: Decimal, cost: Decimal
+    ) -> None:
         i = r.instrument_id
         if r.side is Action.BUY:
             self._cash -= turnover + cost
@@ -337,5 +354,10 @@ class SimulatedBrokerAdapter:
 
     # ------------------------------------------------------ reconciliation aid
     def ledger_snapshot(self) -> dict:
-        return {"cash": self._cash, "positions": dict(sorted(self._qty.items())),
-                "avg_costs": {i: self._cost_basis[i] / Decimal(q) for i, q in sorted(self._qty.items())}}
+        return {
+            "cash": self._cash,
+            "positions": dict(sorted(self._qty.items())),
+            "avg_costs": {
+                i: self._cost_basis[i] / Decimal(q) for i, q in sorted(self._qty.items())
+            },
+        }

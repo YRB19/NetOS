@@ -35,7 +35,9 @@ class CheckpointStore:
                 fh.write(data)
                 fh.flush()
                 os.fsync(fh.fileno())
-            os.replace(tmp, self._path)  # atomic on POSIX: readers see the old or the new file, never a torn one
+            os.replace(
+                tmp, self._path
+            )  # atomic on POSIX: readers see the old or the new file, never a torn one
             try:  # make the rename itself durable where the platform allows it
                 fd = os.open(self._path.parent, os.O_RDONLY)
                 try:
@@ -53,4 +55,6 @@ class CheckpointStore:
         try:
             return json.loads(self._path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
-            raise CheckpointError(f"checkpoint unreadable or corrupt: {type(e).__name__}: {e}") from e
+            raise CheckpointError(
+                f"checkpoint unreadable or corrupt: {type(e).__name__}: {e}"
+            ) from e
