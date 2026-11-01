@@ -183,3 +183,5 @@ Optional `ResearchHarness(availability=AvailabilityLedger)` enforces availabilit
 (`UNVERIFIABLE` when no ledger). The "ingestion_time not used / no PBO / no regime / no walk-forward / exit costs not included" limitations above are
 partly closed by the Slice 9 modules (see docs/statistical-validation.md); remaining: no verified historical data, no slippage/liquidity model,
 no re-fitting, no significance testing, no liquidity regimes.
+
+Closure: evaluations that claim confirmatory status must go through `research/validity/service.py`; calling `ResearchHarness.run` directly remains an exploratory/infrastructure path.

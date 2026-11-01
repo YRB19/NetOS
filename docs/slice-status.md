@@ -113,3 +113,20 @@ Implemented: frozen versioned protocol + registry, hash-chained trial ledger, ho
 walk-forward + purge/embargo, CSCV/PBO, regime segmentation (trend/volatility; liquidity UNSUPPORTED), extended metrics incl. separate terminal-liquidation estimate,
 dataset-quality/survivorship warnings, validity report + reproduction check. Docs: docs/statistical-validation.md. **Tests:** 837 pass (787 + 50); import checker/arch_lint 0 violations;
 pytest/ruff/mypy unavailable. **Limits:** see statistical-validation.md §10. No profitability claim is made. Slice 10 not started.
+
+## Slice 9 acceptance closure (2026-10-26)
+Enforced workflow added (ADR-20). Tests: see implementation-log. Status unchanged in substance: COMPLETE for the Slice 9 prompt on synthetic infrastructure; roadmap file still not supplied. Slice 10 not started.
+
+## Slice 10 — Operator Console v1 (2026-10-30)
+
+**Status: COMPLETE for the Slice 10 brief, with the stack deviation below.** Private, local-only, read-only inspection console: `console_api/` (stdlib GET-only API over
+`JournalReader` and persisted artifacts), `frontend/` (dependency-free ES modules), synthetic demo/test fixtures under `tools/`, ADR-21, `docs/operator-console.md`.
+Pages: overview, run explorer, decision explorer + timeline, risk & safety, research/evaluation, orders/fills/reconciliation, health/provenance/exports (JSON/CSV).
+**Deviation:** React/TypeScript/Vite was not used - no network in the build sandbox (ADR-21). **Tests:** 862 -> 913 unittest (+51); 28 frontend `node:test`; 64 real-browser
+checks (Chromium, 1440/768/360px). Both architecture checkers 0 violations; compileall clean. No Slice 7-9 logic or tests modified. Not started: Slice 11, Slice 13.
+Passing UI tests does not prove profitability, broker compatibility or live readiness.
+
+
+## Slice 10 visual redesign - Autonomous Trading Command Centre (2026-10-31)
+Frontend-only pass. New landing command centre (KPI row, role tiles, intake, activity stream, 8-stage agent core, capital/portfolio workspace, session summary) and dark theme across all pages; navigation regrouped into six areas.
+Backend, API, CSP, risk rules, strategy and storage untouched; no Slice 11 work; no Claude runtime. Tests: 913 Python unittest pass; 39 frontend node:test pass (28 original + 11 new); 64 real-browser checks pass (1440/768/360); import-graph 0 violations; compileall clean. See `docs/operator-console.md` section 9.

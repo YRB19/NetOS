@@ -34,3 +34,5 @@ recorded in the artifact. The harness refuses (FAILED artifact) rather than gues
 ## Slice 9 addendum
 Free-text pre-registration is superseded for confirmatory runs by `ExperimentProtocol` (docs/statistical-validation.md §1): frozen, hashed, registered before
 evaluation, structured criteria only. Exploratory runs are labelled; a reused holdout is never confirmatory.
+
+Closure: confirmatory status is granted only by `ResearchEvaluationService` (statistical-validation.md §11); a caller-supplied registration timestamp or holdout status has no effect.

@@ -89,3 +89,27 @@ No verified historical dataset; datasets/universes are not persisted by the rese
 marks and `data_available_at` unknown records are not backfilled; the journal does not yet record research validity events (isolation rule);
 re-fitting walk-forward, significance testing/Deflated Sharpe, and liquidity regimes are not implemented; slippage/spread/impact unmodelled;
 brokerage unverified. pytest/ruff/mypy unavailable (unittest used).
+
+## 11. Enforced evaluation workflow (Slice 9 closure, ADR-20)
+Entry point: `research/validity/service.py::ResearchEvaluationService.evaluate`. The registries, `build_report` and the harness remain usable
+independently, but **only this service enforces the combined contract**, and only `build_verified_report` can emit a confirmatory verdict.
+Confirmatory order of operations: (1) write-ahead `STARTED` trial record (its ledger time is the authoritative evaluation start);
+(2) `verify_registered_before` — protocol loaded from the registry, stored hash equals the supplied object, registered before that start;
+(3) correspondence of frozen protocol to supplied config/strategy/baselines/universe versions/data range/dataset hash/cost schedule/fill assumption/
+strategy cutoff/hypothesis/split and OUT_OF_SAMPLE period, plus ledger chain verification; (4) holdout identity recomputed from dataset hash +
+universe versions + test window and compared with the protocol; (5) holdout exposure recorded per the frozen policy (REJECT blocks *before* the harness runs);
+(6) harness run through its normal interface; run artifacts (success or failure) written; (7) post-run correspondence (data version, strategy, baselines, universes);
+(8) terminal trial event (COMPLETED, COMPLETED_WORSE_THAN_BASELINE, FAILED, INVALID_CONFIGURATION, EXCLUDED_VALIDITY_FAILURE, REJECTED; INTERRUPTED on BaseException);
+(9) report assembled from `EvaluationEvidence.verify()`, which re-derives protocol registration time, holdout exposure record, ledger chain, trial counts/head hash and
+the run-artifact digest from durable stores. A mismatch before the run ⇒ trial `REJECTED`, nothing evaluated. Exploratory protocols may run with unverified correspondence,
+but are labelled non-confirmatory.
+**Trial lifecycle & denominator:** a logical trial = one `attempt_id` (START + TERMINAL events) or one legacy single-event entry; reported `trial_count` counts logical trials for
+the protocol family (all versions); `event_count` is separate. `unresolved()` lists attempts whose latest event is STARTED; `recover_interrupted()` appends INTERRUPTED
+(never edits, no result fabricated). **Durability limits:** single-process append with fsync; no file locking (concurrent writers unsupported); a crash between the START write and the
+holdout write leaves an unresolved attempt with no exposure (conservative direction is not guaranteed in the opposite order: exposure is written after START and before the run);
+a crash after the run but before the terminal event leaves an unresolved attempt whose run artifacts exist; tail truncation is detectable only against an externally held head hash.
+**Report v2 semantics:** `research_validity_verdict` (alias `verdict`) answers only whether the controls support the stated evaluation claim: INVALID, UNSUPPORTED, EXPLORATORY_ONLY,
+INFRASTRUCTURE_ONLY, CONFIRMATORY_CHECKS_PASSED. `criterion_outcome` (CRITERIA_MET / CRITERIA_NOT_MET / ADVERSE / INCONCLUSIVE) reports the structured criteria separately and is
+`criterion_outcome_admissible_as_evidence` only when validity passed. `evidence_class` and `profitability_claim` (always NONE) are separate. `CONFIRMATORY_CHECKS_PASSED` does **not** mean
+useful returns or that criteria were met. The legacy `build_report` records caller-supplied values as `LEGACY_UNVERIFIED` and can never grant confirmatory status.
+Reports are stored per attempt: `validity/<run_id>/report-<attempt_id>.json`.
