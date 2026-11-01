@@ -40,7 +40,12 @@ from research.stats.pbo import PboStatus, compute_pbo
 from research.stats.regimes import (
     RegimeDefinition, RegimeDimension, classify, equal_weight_index, segment_equity,
 )  # fmt: skip
-from research.trials.holdout import HoldoutRegistry, HoldoutReuseError, HoldoutStatus, holdout_id_for
+from research.trials.holdout import (
+    HoldoutRegistry,
+    HoldoutReuseError,
+    HoldoutStatus,
+    holdout_id_for,
+)
 from research.trials.ledger import TrialLedger, TrialLedgerError, TrialOutcome
 from research.validity.assumptions import AssumptionStatus, ExecutionAssumptions
 from research.validity.evaluation import (
@@ -49,7 +54,18 @@ from research.validity.evaluation import (
 from research.validity.metrics import compute_extended_metrics, final_marks_from_market_data
 from research.validity.quality import DatasetProvenance, assess_quality
 from shared.costs import CostModel
-from tests.unit._research_helpers import BASE, ISINS, V1, V2, ThresholdStrategy, bar, config, day, make_bars, universe
+from tests.unit._research_helpers import (
+    BASE,
+    ISINS,
+    V1,
+    V2,
+    ThresholdStrategy,
+    bar,
+    config,
+    day,
+    make_bars,
+    universe,
+)
 
 CLOCK0 = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -84,10 +100,14 @@ class ProtocolTests(unittest.TestCase):
             r1 = reg.register(p1)
             self.assertEqual(reg.register(p1).protocol_hash, r1.protocol_hash)  # idempotent
             with self.assertRaises(ProtocolConflict):
-                reg.register(proto(hypothesis="changed after registration"))  # same version, new content
+                reg.register(
+                    proto(hypothesis="changed after registration")
+                )  # same version, new content
             p2 = proto(version=2, hypothesis="changed", supersedes_protocol_hash=r1.protocol_hash)
             reg.register(p2)
-            self.assertEqual(reg.get("syn-proto", 1).protocol_hash, r1.protocol_hash)  # original intact
+            self.assertEqual(
+                reg.get("syn-proto", 1).protocol_hash, r1.protocol_hash
+            )  # original intact
             with self.assertRaises(ProtocolError):
                 reg.register(proto(version=3, supersedes_protocol_hash="wrong"))
 
@@ -106,20 +126,30 @@ class ProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             reg = ProtocolRegistry(d, clock=lambda: CLOCK0)
             with self.assertRaises(ProtocolError):
-                reg.register(proto(acceptance_criteria=()))  # confirmatory needs structured criteria
+                reg.register(
+                    proto(acceptance_criteria=())
+                )  # confirmatory needs structured criteria
             with self.assertRaises(ProtocolError):
                 reg.register(proto(information_horizon_days=None))
-            bad = proto(acceptance_criteria=(AcceptanceCriterion("net_return", Comparator.GT, "abc", "x"),))
+            bad = proto(
+                acceptance_criteria=(AcceptanceCriterion("net_return", Comparator.GT, "abc", "x"),)
+            )
             self.assertTrue(any("not numeric" in e for e in bad.validate()))
 
     def test_criteria_assessment_structured_only(self):
         p = proto(acceptance_criteria=(AcceptanceCriterion("net_return", Comparator.GT, "0.01", "r"),
                                        AcceptanceCriterion("max_drawdown", Comparator.GT, "0.2", "adv", adverse=True)))  # fmt: skip
-        ok = {"net_return": {"value": "0.05", "status": "OK"}, "max_drawdown": {"value": "0.1", "status": "OK"}}
+        ok = {
+            "net_return": {"value": "0.05", "status": "OK"},
+            "max_drawdown": {"value": "0.1", "status": "OK"},
+        }
         self.assertEqual(assess_criteria(p, ok)["overall"], "CRITERIA_MET")
         adv = dict(ok, max_drawdown={"value": "0.3", "status": "OK"})
         self.assertEqual(assess_criteria(p, adv)["overall"], "ADVERSE")
-        missing = {"net_return": {"value": None, "status": "UNAVAILABLE"}, "max_drawdown": {"value": "0.1", "status": "OK"}}
+        missing = {
+            "net_return": {"value": None, "status": "UNAVAILABLE"},
+            "max_drawdown": {"value": "0.1", "status": "OK"},
+        }
         a = assess_criteria(p, missing)
         self.assertEqual(a["overall"], "INCONCLUSIVE")
         self.assertFalse(a["free_text_assessed"])
@@ -137,13 +167,25 @@ class TrialAndHoldoutTests(unittest.TestCase):
             self.assertEqual(len(led.select(outcome=TrialOutcome.FAILED)), 1)
             self.assertEqual(led.verify(), [])
             with self.assertRaises(TrialLedgerError):  # failures need a controlled reason
-                led.record(protocol_id="p", protocol_hash=None, strategy_id="x", mode="EXPLORATORY", outcome=TrialOutcome.FAILED)
+                led.record(
+                    protocol_id="p",
+                    protocol_hash=None,
+                    strategy_id="x",
+                    mode="EXPLORATORY",
+                    outcome=TrialOutcome.FAILED,
+                )
 
     def test_tampering_detected(self):
         with tempfile.TemporaryDirectory() as d:
             led = TrialLedger(d, clock=lambda: CLOCK0)
             for i in range(3):
-                led.record(protocol_id="p", protocol_hash="h", strategy_id=f"s{i}", mode="EXPLORATORY", outcome=TrialOutcome.COMPLETED)
+                led.record(
+                    protocol_id="p",
+                    protocol_hash="h",
+                    strategy_id=f"s{i}",
+                    mode="EXPLORATORY",
+                    outcome=TrialOutcome.COMPLETED,
+                )
             path = Path(d) / "trials" / "ledger.jsonl"
             lines = path.read_text().splitlines()
             path.write_text("\n".join([lines[0], lines[2]]) + "\n")  # delete the middle trial
@@ -152,18 +194,39 @@ class TrialAndHoldoutTests(unittest.TestCase):
     def test_holdout_reuse_cannot_be_called_untouched(self):
         with tempfile.TemporaryDirectory() as d:
             hr = HoldoutRegistry(d, clock=lambda: CLOCK0)
-            hid = holdout_id_for(dataset_id="ds", dataset_hash="x", universe_versions=("u1",), test_start=day(0), test_end=day(9))
+            hid = holdout_id_for(
+                dataset_id="ds",
+                dataset_hash="x",
+                universe_versions=("u1",),
+                test_start=day(0),
+                test_end=day(9),
+            )
             self.assertIs(hr.status(hid), HoldoutStatus.UNTOUCHED)
             self.assertIs(hr.expose(holdout_id=hid, protocol_id="a", protocol_hash="1", run_id="r1", mode="CONFIRMATORY",
                                     policy=HoldoutReusePolicy.REJECT), HoldoutStatus.UNTOUCHED)  # fmt: skip
             with self.assertRaises(HoldoutReuseError):
-                hr.expose(holdout_id=hid, protocol_id="a", protocol_hash="1", run_id="r2", mode="CONFIRMATORY", policy=HoldoutReusePolicy.REJECT)
+                hr.expose(
+                    holdout_id=hid,
+                    protocol_id="a",
+                    protocol_hash="1",
+                    run_id="r2",
+                    mode="CONFIRMATORY",
+                    policy=HoldoutReusePolicy.REJECT,
+                )
             st = hr.expose(holdout_id=hid, protocol_id="b", protocol_hash="2", run_id="r3", mode="CONFIRMATORY",
                            policy=HoldoutReusePolicy.DOWNGRADE_TO_NON_CONFIRMATORY)  # fmt: skip
             self.assertIs(st, HoldoutStatus.REUSED_NON_CONFIRMATORY)
-            self.assertEqual(len(hr.exposures(hid)), 2)  # history kept; the rejected attempt was not recorded as use
+            self.assertEqual(
+                len(hr.exposures(hid)), 2
+            )  # history kept; the rejected attempt was not recorded as use
             # a NEW protocol does not change the holdout identity, so exposure is still visible
-            same = holdout_id_for(dataset_id="ds", dataset_hash="x", universe_versions=("u1",), test_start=day(0), test_end=day(9))
+            same = holdout_id_for(
+                dataset_id="ds",
+                dataset_hash="x",
+                universe_versions=("u1",),
+                test_start=day(0),
+                test_end=day(9),
+            )
             self.assertIs(hr.status(same), HoldoutStatus.REUSED_NON_CONFIRMATORY)
 
     def test_exploratory_exposure_spoils_untouched(self):
@@ -181,13 +244,18 @@ def _ledger(data, **kw):
 class PointInTimeTests(unittest.TestCase):
     def test_event_earlier_but_available_later_is_not_visible(self):
         late = bar(ISINS[0], 3, 103.0)
-        led = AvailabilityLedger([VO(late, 0, day(6), AB.SOURCE_PUBLISHED)] + [VO(bar(ISINS[0], 1, 101.0), 0, day(1), AB.SOURCE_PUBLISHED)])
+        led = AvailabilityLedger(
+            [VO(late, 0, day(6), AB.SOURCE_PUBLISHED)]
+            + [VO(bar(ISINS[0], 1, 101.0), 0, day(1), AB.SOURCE_PUBLISHED)]
+        )
         self.assertEqual([m.timestamp for m in led.resolve(day(5))], [day(1)])
         self.assertEqual([m.timestamp for m in led.resolve(day(6))], [day(1), day(3)])
 
     def test_revision_cannot_leak_into_earlier_decision(self):
         r0, r1 = bar(ISINS[0], 2, 102.0), bar(ISINS[0], 2, 999.0)
-        led = AvailabilityLedger([VO(r0, 0, day(2), AB.SOURCE_PUBLISHED), VO(r1, 1, day(7), AB.SOURCE_PUBLISHED)])
+        led = AvailabilityLedger(
+            [VO(r0, 0, day(2), AB.SOURCE_PUBLISHED), VO(r1, 1, day(7), AB.SOURCE_PUBLISHED)]
+        )
         self.assertEqual(led.resolve_one(ISINS[0], day(2), day(5)).close, 102.0)
         self.assertEqual(led.resolve_one(ISINS[0], day(2), day(7)).close, 999.0)
         self.assertEqual(led.revised_keys(), [(ISINS[0], day(2))])
@@ -199,12 +267,16 @@ class PointInTimeTests(unittest.TestCase):
 
     def test_unknown_availability_is_unverifiable_not_clean(self):
         unk = VO(bar(ISINS[0], 1, 101.0))  # legacy: basis UNKNOWN, no availability
-        led = AvailabilityLedger([unk, VO(bar(ISINS[0], 2, 102.0), 0, day(2), AB.SYNTHETIC_DECLARED)])
+        led = AvailabilityLedger(
+            [unk, VO(bar(ISINS[0], 2, 102.0), 0, day(2), AB.SYNTHETIC_DECLARED)]
+        )
         self.assertEqual(led.status(), PitStatus.UNVERIFIABLE)
         rep = led.report()
         self.assertFalse(rep["clean_point_in_time_claim"])
         self.assertEqual(len(rep["unverifiable_records"]), 1)
-        self.assertEqual([m.timestamp for m in led.resolve(day(5))], [day(2)])  # excluded, never substituted
+        self.assertEqual(
+            [m.timestamp for m in led.resolve(day(5))], [day(2)]
+        )  # excluded, never substituted
         with self.assertRaises(ResearchRunFailure):
             AvailabilityLedger([unk], unknown_policy=UnknownAvailabilityPolicy.FAIL)
 
@@ -225,13 +297,23 @@ class PointInTimeTests(unittest.TestCase):
 
     def test_harness_decisions_unchanged_by_late_poisoned_revision(self):
         data = make_bars()
-        clean = ResearchHarness(availability=_ledger(data)).run(config(), ThresholdStrategy(), data, [universe()])
+        clean = ResearchHarness(availability=_ledger(data)).run(
+            config(), ThresholdStrategy(), data, [universe()]
+        )
         poisoned_bar = bar(ISINS[0], 5, 9999.0)
-        obs = [VO(m, 0, m.timestamp, AB.SYNTHETIC_DECLARED) for m in data] + [VO(poisoned_bar, 1, day(8), AB.SYNTHETIC_DECLARED)]
-        dirty = ResearchHarness(availability=AvailabilityLedger(obs)).run(config(), ThresholdStrategy(), data, [universe()])
+        obs = [VO(m, 0, m.timestamp, AB.SYNTHETIC_DECLARED) for m in data] + [
+            VO(poisoned_bar, 1, day(8), AB.SYNTHETIC_DECLARED)
+        ]
+        dirty = ResearchHarness(availability=AvailabilityLedger(obs)).run(
+            config(), ThresholdStrategy(), data, [universe()]
+        )
         self.assertTrue(clean.succeeded, clean.failure)
         self.assertTrue(dirty.succeeded, dirty.failure)
-        early = lambda r: [(d["decision_timestamp"], d["instrument_id"], d["action"]) for d in r.decisions if d["decision_timestamp"] < day(8)]  # noqa: E731
+        early = lambda r: [
+            (d["decision_timestamp"], d["instrument_id"], d["action"])
+            for d in r.decisions
+            if d["decision_timestamp"] < day(8)
+        ]  # noqa: E731
         self.assertEqual(early(clean), early(dirty))
         self.assertEqual(clean.contamination_report["point_in_time"]["status"], "SYNTHETIC")
         self.assertNotEqual(clean.data_snapshot_version, dirty.data_snapshot_version)
@@ -248,7 +330,9 @@ class SplitTests(unittest.TestCase):
         p = purge_boundary(day(10), day(20), 5, 2)
         self.assertEqual(p.status, "APPLIED")
         self.assertEqual(p.train_cutoff_exclusive, day(13))
-        self.assertIsNone(p.excluded_interval)  # cutoff day 13 is already after train_end day 10: nothing purged
+        self.assertIsNone(
+            p.excluded_interval
+        )  # cutoff day 13 is already after train_end day 10: nothing purged
         # horizon so small nothing is purged beyond declared train end
         q = purge_boundary(day(10), day(20), 1, 0)
         self.assertIsNone(q.excluded_interval)
@@ -271,24 +355,46 @@ class SplitTests(unittest.TestCase):
     def test_walk_forward_windows_chronological(self):
         plan = WalkForwardPlan(WalkForwardMode.EXPANDING, day(0), day(29), 10, 5, 5, 2, 1)
         w = plan.windows()
-        self.assertEqual(len(w), 3)  # tests start d10,15,20; a d25 window would end after data_end d29
+        self.assertEqual(
+            len(w), 3
+        )  # tests start d10,15,20; a d25 window would end after data_end d29
         self.assertTrue(all(a.test_end < b.test_start for a, b in zip(w, w[1:])))
         self.assertTrue(all(x.train_end < x.test_start for x in w))
         self.assertFalse(w[0].earlier_test_windows_in_training)
         self.assertTrue(w[1].earlier_test_windows_in_training)
         self.assertEqual(w[0].purge.train_cutoff_exclusive, day(10) - timedelta(days=3))
-        self.assertEqual(plan.plan_hash(), WalkForwardPlan(WalkForwardMode.EXPANDING, day(0), day(29), 10, 5, 5, 2, 1).plan_hash())
+        self.assertEqual(
+            plan.plan_hash(),
+            WalkForwardPlan(WalkForwardMode.EXPANDING, day(0), day(29), 10, 5, 5, 2, 1).plan_hash(),
+        )
 
     def test_rolling_and_overlap_rejected(self):
-        r = WalkForwardPlan(WalkForwardMode.ROLLING, day(0), day(29), 10, 5, 5, 0, 0, "justified", rolling_train_days=7).windows()
+        r = WalkForwardPlan(
+            WalkForwardMode.ROLLING,
+            day(0),
+            day(29),
+            10,
+            5,
+            5,
+            0,
+            0,
+            "justified",
+            rolling_train_days=7,
+        ).windows()
         self.assertEqual(r[1].train_start, r[1].test_start - timedelta(days=7))
         with self.assertRaises(ValueError):
-            WalkForwardPlan(WalkForwardMode.EXPANDING, day(0), day(29), 10, 5, 3, 0, 0, "j").windows()
+            WalkForwardPlan(
+                WalkForwardMode.EXPANDING, day(0), day(29), 10, 5, 3, 0, 0, "j"
+            ).windows()
 
     def test_walk_forward_runs_and_refit_unsupported(self):
         data = make_bars(days=20)
-        plan = WalkForwardPlan(WalkForwardMode.EXPANDING, day(-6), day(19), 6, 5, 5, 0, 0, "daily, same-day signal")
-        out = run_walk_forward(ResearchHarness(), plan, config(), Tier1EqualWeightBuyHold(), data, [universe()])
+        plan = WalkForwardPlan(
+            WalkForwardMode.EXPANDING, day(-6), day(19), 6, 5, 5, 0, 0, "daily, same-day signal"
+        )
+        out = run_walk_forward(
+            ResearchHarness(), plan, config(), Tier1EqualWeightBuyHold(), data, [universe()]
+        )
         self.assertIn(out.status, ("COMPLETED", "FAILED"))
         self.assertEqual(out.refit, "NOT_APPLICABLE_FIXED_CONFIGURATION")
         self.assertEqual(len(out.window_results), 3)
@@ -316,13 +422,15 @@ class PboTests(unittest.TestCase):
         self.assertAlmostEqual(r.mean_logit, math.log(2), places=12)
 
     def test_unsupported_and_insufficient_return_no_number(self):
-        for res in (compute_pbo({"A": self.A}, 4, "MEAN_RETURN"),
-                    compute_pbo({"A": self.A, "B": self.B[:3]}, 4, "MEAN_RETURN"),
-                    compute_pbo({"A": self.A, "B": [0, 0, 1, None]}, 4, "MEAN_RETURN"),
-                    compute_pbo({"A": self.A, "B": self.B}, 3, "MEAN_RETURN"),
-                    compute_pbo({"A": self.A + [1], "B": self.B + [1]}, 4, "MEAN_RETURN"),
-                    compute_pbo({"A": self.A, "B": list(self.A)}, 4, "MEAN_RETURN"),  # identical candidates
-                    compute_pbo({"A": [1, 1, 1, 1], "B": [2, 2, 2, 2]}, 4, "SHARPE")):  # zero variance
+        for res in (
+            compute_pbo({"A": self.A}, 4, "MEAN_RETURN"),
+            compute_pbo({"A": self.A, "B": self.B[:3]}, 4, "MEAN_RETURN"),
+            compute_pbo({"A": self.A, "B": [0, 0, 1, None]}, 4, "MEAN_RETURN"),
+            compute_pbo({"A": self.A, "B": self.B}, 3, "MEAN_RETURN"),
+            compute_pbo({"A": self.A + [1], "B": self.B + [1]}, 4, "MEAN_RETURN"),
+            compute_pbo({"A": self.A, "B": list(self.A)}, 4, "MEAN_RETURN"),  # identical candidates
+            compute_pbo({"A": [1, 1, 1, 1], "B": [2, 2, 2, 2]}, 4, "SHARPE"),
+        ):  # zero variance
             self.assertIsNone(res.pbo)
             self.assertNotEqual(res.status, PboStatus.OK)
             self.assertTrue(res.reason)
@@ -332,7 +440,11 @@ class PboTests(unittest.TestCase):
 
     def test_noise_only_in_range(self):
         rng = random.Random(7)
-        r = compute_pbo({f"t{i}": [Decimal(str(rng.gauss(0, 1))) for _ in range(64)] for i in range(10)}, 8, "SHARPE")
+        r = compute_pbo(
+            {f"t{i}": [Decimal(str(rng.gauss(0, 1))) for _ in range(64)] for i in range(10)},
+            8,
+            "SHARPE",
+        )
         self.assertEqual(r.status, PboStatus.OK)
         self.assertEqual(r.n_combinations, 70)
         self.assertTrue(0.0 <= r.pbo <= 1.0)
@@ -349,30 +461,50 @@ class RegimeTests(unittest.TestCase):
         t = [day(i) for i in range(6)]
         levels = [Decimal(x) for x in (100, 110, 121, 110, 100, 100)]
         series = list(zip(t, levels))
-        d = RegimeDefinition("syn", 1, RegimeDimension.TREND, 2, Decimal("0.05"), Decimal("0.05"), 1)
+        d = RegimeDefinition(
+            "syn", 1, RegimeDimension.TREND, 2, Decimal("0.05"), Decimal("0.05"), 1
+        )
         lab = classify(series, d)
         self.assertEqual(lab[t[0]], "UNCLASSIFIED_INSUFFICIENT_HISTORY")
-        self.assertEqual(lab[t[2]], "RISING")      # 121/100-1 = 21%
+        self.assertEqual(lab[t[2]], "RISING")  # 121/100-1 = 21%
         self.assertEqual(lab[t[3]], "RANGE_BOUND")  # 110/110-1 = 0
-        self.assertEqual(lab[t[4]], "FALLING")     # 100/121-1 = -17.4%
-        self.assertEqual(lab[t[5]], "FALLING")     # 100/110-1 = -9.1% < -5%
+        self.assertEqual(lab[t[4]], "FALLING")  # 100/121-1 = -17.4%
+        self.assertEqual(lab[t[5]], "FALLING")  # 100/110-1 = -9.1% < -5%
 
     def test_labels_use_only_past_data(self):
         t = [day(i) for i in range(8)]
         a = list(zip(t, [Decimal(x) for x in (100, 101, 102, 103, 104, 105, 106, 107)]))
         b = a[:5] + [(x, Decimal(1)) for x, _ in a[5:]]  # change only the future
-        d = RegimeDefinition("syn", 1, RegimeDimension.TREND, 2, Decimal("0.01"), Decimal("0.01"), 1)
-        self.assertEqual({k: v for k, v in classify(a, d).items() if k <= t[4]}, {k: v for k, v in classify(b, d).items() if k <= t[4]})
+        d = RegimeDefinition(
+            "syn", 1, RegimeDimension.TREND, 2, Decimal("0.01"), Decimal("0.01"), 1
+        )
+        self.assertEqual(
+            {k: v for k, v in classify(a, d).items() if k <= t[4]},
+            {k: v for k, v in classify(b, d).items() if k <= t[4]},
+        )
 
     def test_segment_counts_and_insufficient_sample(self):
         t = [day(i) for i in range(5)]
-        eq = [{"timestamp": x, "equity": Decimal(e)} for x, e in zip(t, (100, 110, 121, 121, 133.1))]
-        labels = {t[0]: "RISING", t[1]: "RISING", t[2]: "RANGE_BOUND", t[3]: "RISING", t[4]: "RISING"}
-        d = RegimeDefinition("syn", 1, RegimeDimension.TREND, 2, Decimal("0.05"), Decimal("0.05"), 3)
+        eq = [
+            {"timestamp": x, "equity": Decimal(e)} for x, e in zip(t, (100, 110, 121, 121, 133.1))
+        ]
+        labels = {
+            t[0]: "RISING",
+            t[1]: "RISING",
+            t[2]: "RANGE_BOUND",
+            t[3]: "RISING",
+            t[4]: "RISING",
+        }
+        d = RegimeDefinition(
+            "syn", 1, RegimeDimension.TREND, 2, Decimal("0.05"), Decimal("0.05"), 3
+        )
         seg = segment_equity(eq, labels, d)["regimes"]
         self.assertEqual(seg["RISING"]["samples"], 3)  # returns t0->1, t1->2, t3->4
         self.assertEqual(seg["RISING"]["status"], "OK")
-        self.assertEqual(Decimal(seg["RISING"]["compounded_return"]).quantize(Decimal("0.0001")), Decimal("0.3310"))  # 1.1*1.1*1.1-1
+        self.assertEqual(
+            Decimal(seg["RISING"]["compounded_return"]).quantize(Decimal("0.0001")),
+            Decimal("0.3310"),
+        )  # 1.1*1.1*1.1-1
         self.assertEqual(seg["RANGE_BOUND"]["status"], "INSUFFICIENT_SAMPLE")
         self.assertIsNone(seg["RANGE_BOUND"]["compounded_return"])
 
@@ -381,7 +513,12 @@ class RegimeTests(unittest.TestCase):
         self.assertEqual(segment_equity([], {}, d)["status"], "UNSUPPORTED")
 
     def test_equal_weight_index(self):
-        data = [bar(ISINS[0], 0, 100.0), bar(ISINS[1], 0, 200.0), bar(ISINS[0], 1, 110.0), bar(ISINS[1], 1, 200.0)]
+        data = [
+            bar(ISINS[0], 0, 100.0),
+            bar(ISINS[1], 0, 200.0),
+            bar(ISINS[0], 1, 110.0),
+            bar(ISINS[1], 1, 200.0),
+        ]
         idx = equal_weight_index(data, set(ISINS[:2]))
         self.assertEqual(idx[1][1], Decimal(105))  # mean(+10%, 0%) = +5% -> 105
 
@@ -389,39 +526,72 @@ class RegimeTests(unittest.TestCase):
 class MetricTests(unittest.TestCase):
     def setUp(self):
         self.cm = CostModel()
-        self.r = ResearchHarness().run(config(), Tier1EqualWeightBuyHold(), make_bars(), [universe()])
+        self.r = ResearchHarness().run(
+            config(), Tier1EqualWeightBuyHold(), make_bars(), [universe()]
+        )
         self.assertTrue(self.r.succeeded, self.r.failure)
 
     def _with_equity(self, eqs):
-        rows = tuple({"timestamp": day(i), "cash": Decimal(0), "market_value": Decimal(e), "equity": Decimal(e)} for i, e in enumerate(eqs))
+        rows = tuple(
+            {
+                "timestamp": day(i),
+                "cash": Decimal(0),
+                "market_value": Decimal(e),
+                "equity": Decimal(e),
+            }
+            for i, e in enumerate(eqs)
+        )
         m = dict(self.r.metrics, initial_capital=Decimal(eqs[0]))
         return dataclasses.replace(self.r, equity_curve=rows, metrics=m)
 
     def test_drawdown_and_volatility_hand_calculated(self):
-        x = compute_extended_metrics(self._with_equity([100, 110, 99, 121]), cost_model=self.cm, final_marks={})
+        x = compute_extended_metrics(
+            self._with_equity([100, 110, 99, 121]), cost_model=self.cm, final_marks={}
+        )
         self.assertEqual(Decimal(x["max_drawdown"]["value"]), Decimal("0.1"))  # (110-99)/110
         self.assertEqual(x["max_drawdown_inr"]["value"], "11.00")
         rets = [0.1, -0.1, 121 / 99 - 1]
-        self.assertAlmostEqual(float(x["periodic_volatility"]["value"]), statistics.stdev(rets), places=8)
+        self.assertAlmostEqual(
+            float(x["periodic_volatility"]["value"]), statistics.stdev(rets), places=8
+        )
         self.assertEqual(x["periodic_volatility"]["denominator"], "3 returns")
-        self.assertEqual(x["annualised_volatility"]["status"], "UNSUPPORTED")  # no justified convention
+        self.assertEqual(
+            x["annualised_volatility"]["status"], "UNSUPPORTED"
+        )  # no justified convention
 
     def test_annualisation_only_with_justification(self):
         x = compute_extended_metrics(self._with_equity([100, 110, 99, 121]), cost_model=self.cm, final_marks={},
                                      annualisation_periods_per_year=252, annualisation_justification="NSE ~252 sessions; daily cycles")  # fmt: skip
-        self.assertAlmostEqual(float(x["annualised_volatility"]["value"]), statistics.stdev([0.1, -0.1, 121 / 99 - 1]) * math.sqrt(252), places=6)
+        self.assertAlmostEqual(
+            float(x["annualised_volatility"]["value"]),
+            statistics.stdev([0.1, -0.1, 121 / 99 - 1]) * math.sqrt(252),
+            places=6,
+        )
 
     def test_insufficient_sample_is_not_zero(self):
-        x = compute_extended_metrics(self._with_equity([100, 101]), cost_model=self.cm, final_marks={})
+        x = compute_extended_metrics(
+            self._with_equity([100, 101]), cost_model=self.cm, final_marks={}
+        )
         self.assertIsNone(x["periodic_volatility"]["value"])
         self.assertEqual(x["periodic_volatility"]["status"], "INSUFFICIENT_SAMPLE")
 
     def _term(self, version, slip=None):
         cfg = config(cost_schedule_version=version)
         r = ResearchHarness().run(cfg, Tier1EqualWeightBuyHold(), make_bars(), [universe()])
-        r = dataclasses.replace(r, final_positions=({"instrument_id": ISINS[0], "quantity": 100, "avg_cost": "1"},))
-        a = ExecutionAssumptions(terminal_slippage_bps=slip, terminal_slippage_status=AssumptionStatus.ASSUMED_UNVERIFIED) if slip else None
-        return r, compute_extended_metrics(r, cost_model=self.cm, final_marks={ISINS[0]: Decimal("200")}, assumptions=a)
+        r = dataclasses.replace(
+            r, final_positions=({"instrument_id": ISINS[0], "quantity": 100, "avg_cost": "1"},)
+        )
+        a = (
+            ExecutionAssumptions(
+                terminal_slippage_bps=slip,
+                terminal_slippage_status=AssumptionStatus.ASSUMED_UNVERIFIED,
+            )
+            if slip
+            else None
+        )
+        return r, compute_extended_metrics(
+            r, cost_model=self.cm, final_marks={ISINS[0]: Decimal("200")}, assumptions=a
+        )
 
     def test_terminal_liquidation_hand_calculated_both_schedules(self):
         # SELL 100 @ 200 = 20,000: STT 20.00 + exch(0.0000297|0.0000307 -> .59|.61) + SEBI .02 + GST 18%*(exch+sebi)=.11
@@ -438,17 +608,27 @@ class MetricTests(unittest.TestCase):
         self.assertEqual(t["estimated_cost"], "20.72")
         self.assertEqual(t["assumed_slippage_cost"], "20.00")
         final_eq = Decimal(r.equity_curve[-1]["equity"])
-        self.assertEqual(Decimal(t["result_after_terminal_liquidation"]), (final_eq - Decimal("20.72") - Decimal("20.00")).quantize(Decimal("0.01")))
-        self.assertEqual(x["execution_assumptions"]["terminal_slippage"]["status"], "ASSUMED_UNVERIFIED")
+        self.assertEqual(
+            Decimal(t["result_after_terminal_liquidation"]),
+            (final_eq - Decimal("20.72") - Decimal("20.00")).quantize(Decimal("0.01")),
+        )
+        self.assertEqual(
+            x["execution_assumptions"]["terminal_slippage"]["status"], "ASSUMED_UNVERIFIED"
+        )
         self.assertEqual(x["execution_assumptions"]["slippage_booked_trades"], "UNMODELLED")
 
     def test_terminal_cost_distinct_from_actual_and_unavailable_without_marks(self):
         x = compute_extended_metrics(self.r, cost_model=self.cm, final_marks=None)
         self.assertEqual(x["terminal_liquidation"]["status"], "UNAVAILABLE")
         self.assertIsNone(x["terminal_liquidation"]["estimated_cost"])
-        self.assertEqual(Decimal(x["total_actual_costs"]["value"]).quantize(Decimal("0.01")), self.r.metrics["total_transaction_costs"])
+        self.assertEqual(
+            Decimal(x["total_actual_costs"]["value"]).quantize(Decimal("0.01")),
+            self.r.metrics["total_transaction_costs"],
+        )
         self.assertEqual(x["reconciliation_actual_costs_vs_portfolio"]["value"], "True")
-        self.assertEqual(Decimal(x["actual_exit_costs"]["value"]), 0)  # buy-and-hold made no sell in window
+        self.assertEqual(
+            Decimal(x["actual_exit_costs"]["value"]), 0
+        )  # buy-and-hold made no sell in window
 
     def test_entry_costs_hand_calculated(self):
         # Tier-1 buys on day0 fills at day1 open; entry cost per fill must equal STT+exch+sebi+gst+stamp on the fill turnover
@@ -468,13 +648,17 @@ class MetricTests(unittest.TestCase):
         base = ResearchHarness().run(config(), Tier1EqualWeightBuyHold(), make_bars(), [universe()])
         x = compute_extended_metrics(self.r, cost_model=self.cm, final_marks=None, baseline=base)
         self.assertEqual(Decimal(x["baseline_relative_return"]["value"]), 0)
-        other = ResearchHarness().run(config(cost_schedule_version=V1), Tier1EqualWeightBuyHold(), make_bars(), [universe()])
+        other = ResearchHarness().run(
+            config(cost_schedule_version=V1), Tier1EqualWeightBuyHold(), make_bars(), [universe()]
+        )
         y = compute_extended_metrics(self.r, cost_model=self.cm, final_marks=None, baseline=other)
         self.assertEqual(y["baseline_relative_return"]["status"], "NON_COMPARABLE")
         self.assertIsNone(y["baseline_relative_return"]["value"])
 
     def test_final_marks_from_data(self):
-        r = dataclasses.replace(self.r, final_positions=({"instrument_id": ISINS[0], "quantity": 1, "avg_cost": "1"},))
+        r = dataclasses.replace(
+            self.r, final_positions=({"instrument_id": ISINS[0], "quantity": 1, "avg_cost": "1"},)
+        )
         m = final_marks_from_market_data(r, make_bars())
         self.assertEqual(m[ISINS[0]], Decimal(str(100.0 + 9)))
         self.assertIsNone(final_marks_from_market_data(dataclasses.replace(r, final_positions=({"instrument_id": "NOPE", "quantity": 1, "avg_cost": "1"},)), make_bars()))  # fmt: skip
@@ -484,13 +668,17 @@ class QualityTests(unittest.TestCase):
     def test_delisted_instrument_fixture(self):
         u1 = make_permitted_universe(list(ISINS), day(0))
         u2 = make_permitted_universe(list(ISINS[:2]), day(5))  # ISINS[2] dropped
-        data = [m for m in make_bars() if not (m.instrument_id == ISINS[2] and m.timestamp >= day(5))]
+        data = [
+            m for m in make_bars() if not (m.instrument_id == ISINS[2] and m.timestamp >= day(5))
+        ]
         prov = DatasetProvenance("syn", "v1", "synthetic", True)
         q = assess_quality(data, [u1, u2], prov)
         codes = {w["code"] for w in q["warnings"]}
         self.assertIn("POSSIBLE_SURVIVORSHIP_BIAS", codes)
         self.assertEqual(q["evidence_class"], "SYNTHETIC_INFRASTRUCTURE")
-        prov2 = DatasetProvenance("syn", "v1", "synthetic", True, delisted_instruments=frozenset({ISINS[2]}))
+        prov2 = DatasetProvenance(
+            "syn", "v1", "synthetic", True, delisted_instruments=frozenset({ISINS[2]})
+        )
         codes2 = {w["code"] for w in assess_quality(data, [u1, u2], prov2)["warnings"]}
         self.assertNotIn("POSSIBLE_SURVIVORSHIP_BIAS", codes2)
 
@@ -499,12 +687,23 @@ class QualityTests(unittest.TestCase):
         data[0] = dataclasses.replace(data[0], adjusted=True)
         q = assess_quality(data, [universe()], DatasetProvenance("h", "v", "vendor", False))
         codes = {w["code"] for w in q["warnings"]}
-        self.assertTrue({"CORPORATE_ACTION_ADJUSTMENT_MISMATCH", "UNVERIFIED_HISTORY_SOURCE", "POINT_IN_TIME_NOT_VERIFIED"} <= codes)
+        self.assertTrue(
+            {
+                "CORPORATE_ACTION_ADJUSTMENT_MISMATCH",
+                "UNVERIFIED_HISTORY_SOURCE",
+                "POINT_IN_TIME_NOT_VERIFIED",
+            }
+            <= codes
+        )
         self.assertEqual(q["evidence_class"], "HISTORICAL_UNVERIFIED")
 
     def test_missing_bars_and_stale_and_identity_gap(self):
         data = make_bars(skip={(ISINS[0], 3)})
-        q = assess_quality(data, [make_permitted_universe(list(ISINS[:1]), day(0))], DatasetProvenance("s", "v", "x", True))
+        q = assess_quality(
+            data,
+            [make_permitted_universe(list(ISINS[:1]), day(0))],
+            DatasetProvenance("s", "v", "x", True),
+        )
         codes = {w["code"] for w in q["warnings"]}
         self.assertIn("MISSING_BARS", codes)
         self.assertIn("IDENTITY_MAPPING_GAP", codes)
@@ -513,14 +712,26 @@ class QualityTests(unittest.TestCase):
 
 
 class EvaluationIntegrationTests(unittest.TestCase):
-    def _report(self, root, p, holdout="UNTOUCHED", mode_reg="2026-01-01T00:00:00+00:00", synthetic=True, pit_clean=False):
+    def _report(
+        self,
+        root,
+        p,
+        holdout="UNTOUCHED",
+        mode_reg="2026-01-01T00:00:00+00:00",
+        synthetic=True,
+        pit_clean=False,
+    ):
         data = make_bars()
         led = _ledger(data)
         h = ResearchHarness(availability=led)
         r = h.run(config(), Tier1EqualWeightBuyHold(), data, [universe()])
         write_run(r, root)
-        ext = compute_extended_metrics(r, cost_model=CostModel(), final_marks=final_marks_from_market_data(r, data))
-        q = assess_quality(data, [universe()], DatasetProvenance("syn", "v", "synthetic", synthetic))
+        ext = compute_extended_metrics(
+            r, cost_model=CostModel(), final_marks=final_marks_from_market_data(r, data)
+        )
+        q = assess_quality(
+            data, [universe()], DatasetProvenance("syn", "v", "synthetic", synthetic)
+        )
         rep = build_report(protocol=p, protocol_hash=p.protocol_hash(), protocol_registered_at=mode_reg, result=r,
                            extended_metrics=ext, quality=q, holdout_status=holdout, trial_count=3, ledger_head_hash="abc",
                            pbo=None, regimes=None, walk_forward=None,
@@ -537,13 +748,22 @@ class EvaluationIntegrationTests(unittest.TestCase):
             self.assertEqual(rep["trial_accounting"]["trials_recorded_for_protocol_family"], 3)
             self.assertIn("not evidence", rep["uncertainty_notice"])
 
-    def test_reused_holdout_downgraded_and_unregistered_unsupported(self):
+    def test_legacy_builder_cannot_grant_confirmatory_status(self):
+        # Closure: caller-supplied holdout/registration strings are recorded but unverified.
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._report(d, proto(), holdout="REUSED_NON_CONFIRMATORY")[2]["verdict"], "EXPLORATORY_ONLY")
+            rep = self._report(d, proto(), holdout="REUSED_NON_CONFIRMATORY")[2]
+            self.assertEqual(rep["evidence_verification"], "LEGACY_UNVERIFIED")
+            self.assertIn("CALLER_SUPPLIED_UNVERIFIED", rep["trial_accounting"]["derived_from"])
+            self.assertNotEqual(rep["research_validity_verdict"], "CONFIRMATORY_CHECKS_PASSED")
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._report(d, proto(), mode_reg=None)[2]["verdict"], "UNSUPPORTED")
+            self.assertNotEqual(
+                self._report(d, proto(), mode_reg=None)[2]["verdict"], "CONFIRMATORY_CHECKS_PASSED"
+            )
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._report(d, proto(mode=ExperimentMode.EXPLORATORY))[2]["verdict"], "EXPLORATORY_ONLY")
+            self.assertEqual(
+                self._report(d, proto(mode=ExperimentMode.EXPLORATORY))[2]["verdict"],
+                "INFRASTRUCTURE_ONLY",
+            )
 
     def test_hashes_linked_reproducible_and_failures_detected(self):
         with tempfile.TemporaryDirectory() as d:
@@ -555,23 +775,50 @@ class EvaluationIntegrationTests(unittest.TestCase):
                                 strategy=Tier1EqualWeightBuyHold(), market_data=data, universe_schedule=[universe()])  # fmt: skip
             self.assertTrue(out["reproduced"])
             with self.assertRaises(ReproducibilityFailure) as c:
-                reproduce_run(d, path, harness=ResearchHarness(), config=config(), strategy=Tier1EqualWeightBuyHold(), market_data=None, universe_schedule=[universe()])  # noqa: E501
+                reproduce_run(
+                    d,
+                    path,
+                    harness=ResearchHarness(),
+                    config=config(),
+                    strategy=Tier1EqualWeightBuyHold(),
+                    market_data=None,
+                    universe_schedule=[universe()],
+                )  # noqa: E501
             self.assertEqual(c.exception.kind, "MISSING_INPUT")
             # corrupt a stored artifact
             tr = Path(d) / "runs" / r.run_id / "trades.jsonl"
             tr.write_text(tr.read_text() + "x")
             with self.assertRaises(ReproducibilityFailure) as c2:
-                reproduce_run(d, path, harness=ResearchHarness(), config=config(), strategy=Tier1EqualWeightBuyHold(), market_data=data, universe_schedule=[universe()])  # noqa: E501
+                reproduce_run(
+                    d,
+                    path,
+                    harness=ResearchHarness(),
+                    config=config(),
+                    strategy=Tier1EqualWeightBuyHold(),
+                    market_data=data,
+                    universe_schedule=[universe()],
+                )  # noqa: E501
             self.assertEqual(c2.exception.kind, "CORRUPT_ARTIFACT")
             import shutil
+
             shutil.rmtree(Path(d) / "runs" / r.run_id)
             with self.assertRaises(ReproducibilityFailure) as c3:
-                reproduce_run(d, path, harness=ResearchHarness(), config=config(), strategy=Tier1EqualWeightBuyHold(), market_data=data, universe_schedule=[universe()])  # noqa: E501
+                reproduce_run(
+                    d,
+                    path,
+                    harness=ResearchHarness(),
+                    config=config(),
+                    strategy=Tier1EqualWeightBuyHold(),
+                    market_data=data,
+                    universe_schedule=[universe()],
+                )  # noqa: E501
             self.assertEqual(c3.exception.kind, "MISSING_ARTIFACT")
 
     def test_failed_run_is_invalid_or_unsupported_and_preserved_in_ledger(self):
         data = make_bars()
-        bad = config(strategy_configured_through=day(5))  # configured after OOS start -> contamination
+        bad = config(
+            strategy_configured_through=day(5)
+        )  # configured after OOS start -> contamination
         r = ResearchHarness().run(bad, Tier1EqualWeightBuyHold(), data, [universe()])
         self.assertFalse(r.succeeded)
         with tempfile.TemporaryDirectory() as d:
@@ -590,6 +837,7 @@ class EvaluationIntegrationTests(unittest.TestCase):
 def build_hash(rep):
     from research.harness.jsonio import jsonable
     from shared.versioning.content_hash import hash_json_stable
+
     body = {k: v for k, v in rep.items() if k != "report_hash"}
     return hash_json_stable(jsonable(body))
 
