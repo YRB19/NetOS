@@ -13,3 +13,6 @@ dist/
 htmlcov/
 .DS_Store
 *.zip
+# Slice 10 (Operator Console)
+.demo-artifacts/
+frontend/node_modules/
