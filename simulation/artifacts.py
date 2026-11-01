@@ -27,7 +27,9 @@ def pipeline_files(r: PipelineRunResult) -> dict[str, str]:
         "broker_fills.jsonl": _jsonl(r.broker_fills),
         "reconciliation.jsonl": _jsonl(r.reconciliations),
     }
-    if r.journal_ref is not None:  # Slice 8: link the final export to the incremental journal (content digest only)
+    if (
+        r.journal_ref is not None
+    ):  # Slice 8: link the final export to the incremental journal (content digest only)
         files["journal_ref.json"] = dumps(r.journal_ref)
     return files
 
@@ -39,7 +41,9 @@ def write_pipeline_run(result: PipelineRunResult, root: Path | str) -> Path:
     if sub.exists():
         existing = {p.name: p.read_text(encoding="utf-8") for p in sub.iterdir() if p.is_file()}
         if existing != files:
-            raise ArtifactConflict(f"{sub} already holds different pipeline content; never overwritten")
+            raise ArtifactConflict(
+                f"{sub} already holds different pipeline content; never overwritten"
+            )
     else:
         sub.mkdir()
         for name, text in files.items():

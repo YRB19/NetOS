@@ -214,17 +214,32 @@ class PipelineHarness(ResearchHarness):
         }  # fmt: skip
 
     # ------------------------------------------------------------------ core
-    def _execute_pipeline(self, config, pc: PipelineConfig, strategy, market_data, universes,
-                          run_id, st: _PState, injector, journal_factory=None, evidence_class="SIMULATION_UNSPECIFIED") -> None:  # noqa: ANN001
+    def _execute_pipeline(
+        self,
+        config,
+        pc: PipelineConfig,
+        strategy,
+        market_data,
+        universes,
+        run_id,
+        st: _PState,
+        injector,
+        journal_factory=None,
+        evidence_class="SIMULATION_UNSPECIFIED",
+    ) -> None:  # noqa: ANN001
         errors = validate_config(config, set(self._registry._schedules))
         errors += pc.validate()
         if not errors:
             if not capital_matches(resolved_capital(config), pc.broker):
                 errors.append("broker.initial_cash must equal the research initial_capital")
             if pc.broker.cost_schedule_version != config.cost_schedule_version:
-                errors.append("broker.cost_schedule_version must equal config.cost_schedule_version")
+                errors.append(
+                    "broker.cost_schedule_version must equal config.cost_schedule_version"
+                )
         if errors:
-            raise ResearchRunFailure(FailureCategory.INVALID_CONFIGURATION, "; ".join(errors), errors=errors)
+            raise ResearchRunFailure(
+                FailureCategory.INVALID_CONFIGURATION, "; ".join(errors), errors=errors
+            )
         capital = resolved_capital(config)
         schedule = self._registry.get(config.cost_schedule_version)
         oos = config.evaluation_period is EvaluationPeriod.OUT_OF_SAMPLE
@@ -236,13 +251,19 @@ class PipelineHarness(ResearchHarness):
                                      "strategy must implement generate_candidate_trades(...)")  # fmt: skip
         sv = str(getattr(strategy, "strategy_version_id", ""))
         if not sv:
-            raise ResearchRunFailure(FailureCategory.INVALID_CONFIGURATION, "strategy has no strategy_version_id")
+            raise ResearchRunFailure(
+                FailureCategory.INVALID_CONFIGURATION, "strategy has no strategy_version_id"
+            )
 
         report: dict = {"checks_passed": []}
         st.contamination_report = report
         guards.check_split_separation(config.split)
         report["checks_passed"].append("split_strictly_separated")
-        report.update(guards.check_strategy_configuration_cutoff(config.split, oos, config.strategy_configured_through))
+        report.update(
+            guards.check_strategy_configuration_cutoff(
+                config.split, oos, config.strategy_configured_through
+            )
+        )
         report["checks_passed"].append("strategy_configuration_cutoff")
         report.update(guards.check_cost_schedule_not_from_future(
             schedule.effective_date, w_start, config.acknowledge_future_cost_schedule, schedule.version_id))  # fmt: skip
@@ -267,7 +288,9 @@ class PipelineHarness(ResearchHarness):
         staleness = timedelta(days=config.max_staleness_days)
         live: dict[str, _Live] = {}
         clock = {"t": cycles[0]}
-        mgr = OrderLifecycleManager(risk_version_id, lambda: clock["t"])  # Slice 7: lifecycle + halts
+        mgr = OrderLifecycleManager(
+            risk_version_id, lambda: clock["t"]
+        )  # Slice 7: lifecycle + halts
         st.lifecycle = mgr
         if journal_factory is None:
             raise ResearchRunFailure(FailureCategory.JOURNAL_FAILURE,
@@ -275,7 +298,9 @@ class PipelineHarness(ResearchHarness):
         try:
             jr = journal_factory(run_id)
             if getattr(jr, "run_id", None) != run_id:
-                raise JournalError(ErrorCode.JOURNAL_INVALID_EVENT, "journal run_id does not match the run")
+                raise JournalError(
+                    ErrorCode.JOURNAL_INVALID_EVENT, "journal run_id does not match the run"
+                )
         except JournalError as e:
             raise ResearchRunFailure(FailureCategory.JOURNAL_FAILURE, f"journal could not be opened: {e}",
                                      journal_error_code=e.code.value) from e  # fmt: skip
@@ -318,7 +343,9 @@ class PipelineHarness(ResearchHarness):
             guards.check_snapshots_not_from_future(snapshots, t)
             st.feature_set_versions.add(pc.feature_builder.feature_set_id)
             candidates = self._invoke(strategy, snapshots, universe_t, prev_universe)
-            st.incomplete_snapshots += sum(1 for s_ in snapshots if getattr(s_, "incomplete", False))
+            st.incomplete_snapshots += sum(
+                1 for s_ in snapshots if getattr(s_, "incomplete", False)
+            )
             try:
                 self._validate_candidates(candidates, snapshots, universe_t, t, sv)
             except ResearchRunFailure as vf:
@@ -335,7 +362,9 @@ class PipelineHarness(ResearchHarness):
 
             by_inst = {s.instrument_id: s for s in snapshots}
             prices: dict[str, Decimal] = {
-                s.instrument_id: _dec(s.reference_price) for s in snapshots if s.reference_price is not None
+                s.instrument_id: _dec(s.reference_price)
+                for s in snapshots
+                if s.reference_price is not None
             }
             prices.update(marks)
             snap_ids = {s.instrument_id: s.snapshot_id for s in snapshots}
@@ -343,11 +372,15 @@ class PipelineHarness(ResearchHarness):
             pf_before = portfolio_payload(portfolio, marks, t, "pre_decision")
             uv = getattr(universe_t, "version", None)
 
-            for cand in sorted(candidates, key=lambda c: (c.action is not Action.SELL, c.instrument_id)):
+            for cand in sorted(
+                candidates, key=lambda c: (c.action is not Action.SELL, c.instrument_id)
+            ):
                 snap = by_inst[cand.instrument_id]
                 trace = self._new_trace(cand, snap, t, equity)
                 st.decisions.append(trace)
-                did = rj.start(run_id, t, cand.instrument_id, cand.candidate_id, snap, pf_before, sv, uv)
+                did = rj.start(
+                    run_id, t, cand.instrument_id, cand.candidate_id, snap, pf_before, sv, uv
+                )
                 rj.candidate(did, cand, t)
 
                 def _no_order(state, why, _c=cand, _s=snap, _d=did, **kw) -> None:  # noqa: ANN001
@@ -360,14 +393,20 @@ class PipelineHarness(ResearchHarness):
                     continue
                 if cand.action is Action.SELL and portfolio.quantity(cand.instrument_id) == 0:
                     trace["outcome"] = "NO_TRADE"
-                    trace["execution_translation"] = {"outcome": "NO_TRADE", "reason": "SELL requested but nothing is held"}
+                    trace["execution_translation"] = {
+                        "outcome": "NO_TRADE",
+                        "reason": "SELL requested but nothing is held",
+                    }
                     st.no_op_candidates += 1
                     _no_order(TerminalState.NO_TRADE, "SELL requested but nothing is held")
                     continue
                 if any(lv.request.instrument_id == cand.instrument_id for lv in live.values()):
                     trace["outcome"] = "SKIPPED_PENDING_ORDER_EXISTS"
                     st.skipped_pending += 1
-                    _no_order(TerminalState.SKIPPED_PENDING_ORDER, "an earlier order for this instrument is unfilled")
+                    _no_order(
+                        TerminalState.SKIPPED_PENDING_ORDER,
+                        "an earlier order for this instrument is unfilled",
+                    )
                     st.rejections.append({"decision_timestamp": t, "instrument_id": cand.instrument_id,
                                           "order_id": None, "kind": "SKIPPED_PENDING_ORDER_EXISTS",
                                           "reason": "an earlier order for this instrument is unfilled"})  # fmt: skip
@@ -397,7 +436,9 @@ class PipelineHarness(ResearchHarness):
                                           "order_id": None, "kind": "RISK_VETO", "reason": "; ".join(rd.reasons)})  # fmt: skip
                     vr = self._veto_record(cand, snap, rd, t, cfg_id, run_id, risk_version_id)
                     st.decision_records.append(vr)
-                    rj.finalize(did, vr, t, {"reason": "; ".join(rd.reasons)}, legacy_id=vr.decision_id)
+                    rj.finalize(
+                        did, vr, t, {"reason": "; ".join(rd.reasons)}, legacy_id=vr.decision_id
+                    )
                     continue
 
                 inputs = SizingInputs(
@@ -411,24 +452,44 @@ class PipelineHarness(ResearchHarness):
                 sd = size_order(cand, rd, inputs, pc.sizing)
                 rj.sizing(did, sd, inputs, pc.sizing, rd.approved_qty, t)
                 st.sizing_rows.append(self._sizing_row(t, cand, sd))
-                trace["sizing"] = {"outcome": sd.outcome.value, "reason": sd.reason, "quantity": sd.quantity}
+                trace["sizing"] = {
+                    "outcome": sd.outcome.value,
+                    "reason": sd.reason,
+                    "quantity": sd.quantity,
+                }
                 if sd.outcome is SizingOutcome.NO_TRADE:
                     trace["outcome"] = "NO_TRADE"
                     st.no_op_candidates += 1
-                    _no_order(TerminalState.NO_TRADE, "sizing: " + sd.reason, risk_decision_id=rd.risk_decision_id)
+                    _no_order(
+                        TerminalState.NO_TRADE,
+                        "sizing: " + sd.reason,
+                        risk_decision_id=rd.risk_decision_id,
+                    )
                     continue
                 if sd.outcome is not SizingOutcome.ORDER or sd.order_request is None:
-                    _no_order(TerminalState.NO_TRADE, f"sizing {sd.outcome.value}: {sd.reason}", risk_decision_id=rd.risk_decision_id)
+                    _no_order(
+                        TerminalState.NO_TRADE,
+                        f"sizing {sd.outcome.value}: {sd.reason}",
+                        risk_decision_id=rd.risk_decision_id,
+                    )
                     kind = "SIZING_" + sd.outcome.value
                     self._reject(trace, kind, sd.reason, config, st)
                     continue
 
-                if mgr.halted:  # an unresolved execution state blocks every new submission; the halt
+                if (
+                    mgr.halted
+                ):  # an unresolved execution state blocks every new submission; the halt
                     # is surfaced as a run failure at the next settlement
                     trace["outcome"] = "BLOCKED_EXECUTION_HALT"
-                    _no_order(TerminalState.NO_TRADE, "execution halted: no new submissions", risk_decision_id=rd.risk_decision_id)
+                    _no_order(
+                        TerminalState.NO_TRADE,
+                        "execution halted: no new submissions",
+                        risk_decision_id=rd.risk_decision_id,
+                    )
                     continue
-                rj.intent(did, sd.order_request, t)  # REQUIRED pre-submission evidence: a failure here means no broker call
+                rj.intent(
+                    did, sd.order_request, t
+                )  # REQUIRED pre-submission evidence: a failure here means no broker call
                 sub = mgr.submit(sd.order_request, rd, broker, session)
                 try:
                     rj.submission(did, sub, sd.order_request.idempotency_key, t)
@@ -436,8 +497,10 @@ class PipelineHarness(ResearchHarness):
                     mgr.halt_external("JOURNAL_FAILURE", "journal write failed after a possible broker submission; "
                                       "outcome unresolved until broker lookup/reconciliation", sd.order_request.idempotency_key)  # fmt: skip
                     raise
-                if (sub.outcome not in (SubmitOutcome.ACCEPTED, SubmitOutcome.REJECTED_BY_BROKER)
-                        and sub.record.order.broker_order_id is None):  # outcome truly unknown: nothing to track
+                if (
+                    sub.outcome not in (SubmitOutcome.ACCEPTED, SubmitOutcome.REJECTED_BY_BROKER)
+                    and sub.record.order.broker_order_id is None
+                ):  # outcome truly unknown: nothing to track
                     raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
                                              f"submission outcome {sub.outcome.value}: {sub.detail}")  # fmt: skip
                 status = broker.get_order_status(session, sub.record.order.broker_order_id)
@@ -454,7 +517,9 @@ class PipelineHarness(ResearchHarness):
                 live[status.broker_order_id] = lv
 
             cand_insts = {c_.instrument_id for c_ in candidates}
-            for s_ in snapshots:  # strategy produced no candidate for this instrument: explicit NO_CANDIDATE decision
+            for s_ in (
+                snapshots
+            ):  # strategy produced no candidate for this instrument: explicit NO_CANDIDATE decision
                 if s_.instrument_id not in cand_insts:
                     ndid = rj.start(run_id, t, s_.instrument_id, None, s_, pf_before, sv, uv)
                     rj.finalize(ndid, rj.no_order_record(TerminalState.NO_CANDIDATE, t, s_.instrument_id, s_, None,
@@ -472,7 +537,9 @@ class PipelineHarness(ResearchHarness):
         # orders still open when the window ends
         for lv in list(live.values()):
             status = broker.get_order_status(session, lv.broker_order_id)
-            lv.trace["outcome"] = "UNEXECUTED_END_OF_WINDOW" if not lv.fills else "PARTIALLY_FILLED_END_OF_WINDOW"
+            lv.trace["outcome"] = (
+                "UNEXECUTED_END_OF_WINDOW" if not lv.fills else "PARTIALLY_FILLED_END_OF_WINDOW"
+            )
             st.rejections.append({"decision_timestamp": lv.decision_ts, "instrument_id": lv.request.instrument_id,
                                   "order_id": lv.order_id, "kind": lv.trace["outcome"],
                                   "reason": "no subsequent observation inside the window to complete the order"})  # fmt: skip
@@ -491,8 +558,22 @@ class PipelineHarness(ResearchHarness):
                                         "universe_not_from_future"])  # fmt: skip
 
     # --------------------------------------------------------------- settle
-    def _settle_pipeline(self, t, replay, broker, session, live, portfolio, config, cfg_id,
-                         risk_version_id, st, injector, mgr, opening) -> None:  # noqa: ANN001
+    def _settle_pipeline(
+        self,
+        t,
+        replay,
+        broker,
+        session,
+        live,
+        portfolio,
+        config,
+        cfg_id,
+        risk_version_id,
+        st,
+        injector,
+        mgr,
+        opening,
+    ) -> None:  # noqa: ANN001
         opens: dict[str, Decimal] = {}
         for lv in live.values():
             bar = replay.bar_at(lv.request.instrument_id, t)
@@ -505,7 +586,9 @@ class PipelineHarness(ResearchHarness):
             injector(broker, t)
         for rep in reports:
             lv0 = live.get(rep.broker_order_id)
-            if lv0 is not None and lv0.decision_id:  # persist the incoming evidence BEFORE processing it
+            if (
+                lv0 is not None and lv0.decision_id
+            ):  # persist the incoming evidence BEFORE processing it
                 rj.broker_event(lv0.decision_id, "FILL", rep.broker_order_id, rep.fill.fill_id, None, t,
                                 {"quantity": rep.fill.quantity, "price": rep.fill.price})  # fmt: skip
             res = mgr.apply_event(event_from_fill_report(rep))
@@ -518,12 +601,22 @@ class PipelineHarness(ResearchHarness):
             rj.fill(lv.decision_id, rep, res.status.value, t)
             price = _dec(rep.fill.price)
             qty = int(rep.fill.quantity)
-            app = portfolio.apply_fill(rep.fill.fill_id, lv.request.instrument_id, lv.request.side.value, qty, price,
-                                       rep.charges.total_cost, order_id=rep.fill.order_id, source=rep.adapter_id)
+            app = portfolio.apply_fill(
+                rep.fill.fill_id,
+                lv.request.instrument_id,
+                lv.request.side.value,
+                qty,
+                price,
+                rep.charges.total_cost,
+                order_id=rep.fill.order_id,
+                source=rep.adapter_id,
+            )
             mgr.mark_portfolio_applied(rep.fill.fill_id)
             rj.settled(lv.decision_id, rep.fill.fill_id, portfolio_payload(portfolio, None, t, "post_settlement"),
                        app.change is not None, t)  # fmt: skip
-            if app.change is None:  # portfolio had already booked this fill (ADR-13): confirmed, no second effect
+            if (
+                app.change is None
+            ):  # portfolio had already booked this fill (ADR-13): confirmed, no second effect
                 continue
             change = app.change
             lv.fills.append(rep)
@@ -581,10 +674,17 @@ class PipelineHarness(ResearchHarness):
             raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
                                      "portfolio/broker ledgers disagree: " + "; ".join(rec.mismatches))  # fmt: skip
         # Slice 7: order/fill/position/cash reconciliation across lifecycle, internal books and broker
-        pf_avg = {p_["instrument_id"]: Decimal(p_["avg_cost"]) for p_ in portfolio.positions_snapshot()}
-        full = reconcile_execution(mgr, opening, LedgerView(portfolio.cash, pf_pos, pf_avg),
-                                   LedgerView(ledger["cash"], ledger["positions"], ledger["avg_costs"]),
-                                   broker.order_statuses(session), broker.get_fills(session))
+        pf_avg = {
+            p_["instrument_id"]: Decimal(p_["avg_cost"]) for p_ in portfolio.positions_snapshot()
+        }
+        full = reconcile_execution(
+            mgr,
+            opening,
+            LedgerView(portfolio.cash, pf_pos, pf_avg),
+            LedgerView(ledger["cash"], ledger["positions"], ledger["avg_costs"]),
+            broker.order_statuses(session),
+            broker.get_fills(session),
+        )
         halt = mgr.record_reconciliation(full)
         st.recon_rows[-1].update(execution_reconciliation={"run_id": full.run_id, "outcome": full.outcome.value,
                                                            "mismatches": [str(m) for m in full.mismatches]})  # fmt: skip
@@ -606,15 +706,26 @@ class PipelineHarness(ResearchHarness):
         rec = mgr.record(lv.request.idempotency_key)
         if rec is None or rec.order.state is status.state:
             return
-        kind = {OrderState.REJECTED: EventKind.REJECTED, OrderState.CANCELLED: EventKind.CANCEL_CONFIRMED}.get(status.state)
+        kind = {
+            OrderState.REJECTED: EventKind.REJECTED,
+            OrderState.CANCELLED: EventKind.CANCEL_CONFIRMED,
+        }.get(status.state)
         if kind is not None:
-            res = mgr.apply_event(BrokerEvent(kind, status.broker_order_id, lv.request.idempotency_key,
-                                              detail=status.last_response))
+            res = mgr.apply_event(
+                BrokerEvent(
+                    kind,
+                    status.broker_order_id,
+                    lv.request.idempotency_key,
+                    detail=status.last_response,
+                )
+            )
             if res.status not in (EventStatus.APPLIED, EventStatus.DUPLICATE_IGNORED):
                 raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
                                          f"{kind.value} for {lv.order_id} not applied: {res.status.value} {res.detail}")  # fmt: skip
 
-    def _on_broker_reject(self, lv, status: OrderStatus, t, config, cfg_id, risk_version_id, st, live) -> None:  # noqa: ANN001
+    def _on_broker_reject(
+        self, lv, status: OrderStatus, t, config, cfg_id, risk_version_id, st, live
+    ) -> None:  # noqa: ANN001
         lv.trace["outcome"] = "REJECTED_BY_BROKER"
         lv.trace["rejection_reason"] = status.last_response
         st.rejected += 1
@@ -648,7 +759,9 @@ class PipelineHarness(ResearchHarness):
         })  # fmt: skip
         snap = lv.snapshot
         fills = tuple(r.fill for r in lv.fills)
-        cost_ids = hash_json_stable(jsonable([r.charges for r in lv.fills]))[:24] if lv.fills else None
+        cost_ids = (
+            hash_json_stable(jsonable([r.charges for r in lv.fills]))[:24] if lv.fills else None
+        )
         drec = DecisionRecord(
             instrument_id=lv.request.instrument_id, cycle_timestamp=lv.decision_ts, autonomy_level=_AUTONOMY,
             input_snapshot_id=snap.snapshot_id,
@@ -665,7 +778,11 @@ class PipelineHarness(ResearchHarness):
         )  # fmt: skip
         st.decision_records.append(drec)
         if lv.decision_id and st.rj is not None:
-            mrec = st.lifecycle.record(lv.request.idempotency_key) if st.lifecycle is not None else None
+            mrec = (
+                st.lifecycle.record(lv.request.idempotency_key)
+                if st.lifecycle is not None
+                else None
+            )
             if mrec is not None:
                 st.rj.transitions(lv.decision_id, mrec.order, lv.request.idempotency_key)
             st.rj.finalize(lv.decision_id, drec, t, {"order_final_state": status.state.value,
@@ -673,7 +790,20 @@ class PipelineHarness(ResearchHarness):
                                                       "itemised_charges": [r.charges for r in lv.fills]},
                            legacy_id=drec.decision_id)  # fmt: skip
 
-    def _journal_invalid(self, st, vf, snapshots, t, run_id, cfg_id, risk_version_id, sv, universe_t, portfolio, marks) -> None:  # noqa: ANN001
+    def _journal_invalid(
+        self,
+        st,
+        vf,
+        snapshots,
+        t,
+        run_id,
+        cfg_id,
+        risk_version_id,
+        sv,
+        universe_t,
+        portfolio,
+        marks,
+    ) -> None:  # noqa: ANN001
         """Record an invalid-candidate cycle in the journal (best effort is NOT acceptable: a journal failure
         here replaces the failure with JOURNAL_FAILURE). Re-raising the original is the caller's job."""
         rj = st.rj
@@ -686,7 +816,13 @@ class PipelineHarness(ResearchHarness):
         pf = portfolio_payload(portfolio, None, t, "pre_decision_marks_not_computed")
         did = rj.start(run_id, t, inst, None, snap, pf, sv, getattr(universe_t, "version", None))
         from observability.decision_log.events import EventType
-        rj._e(EventType.CANDIDATE_REJECTED, {"reason": vf.message, "error_code": vf.category.value}, did=did, at=t)  # noqa: SLF001
+
+        rj._e(
+            EventType.CANDIDATE_REJECTED,
+            {"reason": vf.message, "error_code": vf.category.value},
+            did=did,
+            at=t,
+        )  # noqa: SLF001
         rj.finalize(did, rj.no_order_record(TerminalState.REJECTED_INVALID_CANDIDATE, t, inst, snap, None, risk_version_id, cfg_id),
                     t, {"reason": vf.message})  # fmt: skip
 
@@ -729,6 +865,8 @@ class PipelineHarness(ResearchHarness):
     def _portfolio_state(portfolio: ResearchPortfolio, marks, t) -> PortfolioState:  # noqa: ANN001
         pos = []
         for p in portfolio.positions_snapshot():
-            pos.append(Position(p["instrument_id"], float(p["quantity"]), float(Decimal(p["avg_cost"]))))
+            pos.append(
+                Position(p["instrument_id"], float(p["quantity"]), float(Decimal(p["avg_cost"])))
+            )
         return PortfolioState(as_of_timestamp=t, positions=tuple(pos), cash_balance=float(portfolio.cash),
                               source=PortfolioStateSource.SYSTEM_BELIEF)  # fmt: skip

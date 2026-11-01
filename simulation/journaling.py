@@ -35,7 +35,11 @@ def snapshot_payload(snap) -> dict:  # noqa: ANN001
         "source_refs": [{"instrument_id": r.instrument_id, "bar_timestamp": r.timestamp, "source": r.source}
                         for r in snap.source_refs],
     }  # fmt: skip
-    return {"snapshot_id": snap.snapshot_id, "snapshot_content_hash": hash_json_stable(jsonable(body)), "snapshot": body}
+    return {
+        "snapshot_id": snap.snapshot_id,
+        "snapshot_content_hash": hash_json_stable(jsonable(body)),
+        "snapshot": body,
+    }
 
 
 def portfolio_payload(portfolio, marks: dict, as_of: datetime, stage: str) -> dict:  # noqa: ANN001
@@ -60,8 +64,16 @@ class RunJournal:
         self.stage_seconds: dict[str, float] = {}
 
     # -- core ---------------------------------------------------------------
-    def _e(self, et: EventType, payload: dict, *, did: str | None = None, key: str = "", links: dict | None = None,
-           at: datetime | None = None) -> None:
+    def _e(
+        self,
+        et: EventType,
+        payload: dict,
+        *,
+        did: str | None = None,
+        key: str = "",
+        links: dict | None = None,
+        at: datetime | None = None,
+    ) -> None:
         t0 = time.perf_counter()
         try:
             self.rec.emit(et, payload, decision_id=did, key=key, links=links, event_time=at)
@@ -70,13 +82,24 @@ class RunJournal:
             raise ResearchRunFailure(FailureCategory.JOURNAL_FAILURE, f"required journal write failed ({et.value}): {e}",
                                      journal_error_code=e.code.value, event_type=et.value) from e  # fmt: skip
         finally:
-            self.stage_seconds["journal_append"] = self.stage_seconds.get("journal_append", 0.0) + (time.perf_counter() - t0)
+            self.stage_seconds["journal_append"] = self.stage_seconds.get("journal_append", 0.0) + (
+                time.perf_counter() - t0
+            )
         if did:
             self.open[did] = et.value
 
     # -- decision lifecycle ---------------------------------------------------
-    def start(self, run_id: str, t: datetime, instrument_id: str, candidate_id: str | None, snap, portfolio_before: dict,
-              strategy_version_id: str, universe_version: str | None) -> str:  # noqa: ANN001
+    def start(
+        self,
+        run_id: str,
+        t: datetime,
+        instrument_id: str,
+        candidate_id: str | None,
+        snap,
+        portfolio_before: dict,
+        strategy_version_id: str,
+        universe_version: str | None,
+    ) -> str:  # noqa: ANN001
         did = decision_id_for(run_id, t, instrument_id, candidate_id)
         ctx = {**self.ctx, "strategy_version_id": strategy_version_id, "universe_version": universe_version,
                "autonomy_level": AUTONOMY}  # fmt: skip
@@ -133,13 +156,23 @@ class RunJournal:
         self.transitions(did, sub.record.order, key)
 
     def transitions(self, did: str, order, key: str) -> None:  # noqa: ANN001
-        for i, h in enumerate(order.state_history):  # idempotent by (order, index): re-calls add nothing
+        for i, h in enumerate(
+            order.state_history
+        ):  # idempotent by (order, index): re-calls add nothing
             self._e(EventType.ORDER_TRANSITION, {"order_id": order.order_id, "from_state": h.from_state, "to_state": h.to_state,
                                                  "transition_at": h.at, "detail": h.detail, "index": i},
                     did=did, key=f"{order.order_id}:{i}", links={"idempotency_key": key, "order_id": order.order_id})  # fmt: skip
 
-    def broker_event(self, did: str, kind: str, broker_order_id: str, ident: str, detail: str | None, t: datetime,
-                     extra: dict | None = None) -> None:
+    def broker_event(
+        self,
+        did: str,
+        kind: str,
+        broker_order_id: str,
+        ident: str,
+        detail: str | None,
+        t: datetime,
+        extra: dict | None = None,
+    ) -> None:
         self._e(EventType.BROKER_EVENT, {"kind": kind, "broker_order_id": broker_order_id, "identity": ident,
                                          "detail": detail, **(extra or {})}, did=did, key=ident, at=t)  # fmt: skip
 
@@ -152,15 +185,32 @@ class RunJournal:
             "cost_note": "charges are the simulated broker's itemised schedule output; not independently verified",
         }, did=did, key=f.fill_id, links={"fill_id": f.fill_id, "order_id": f.order_id}, at=t)  # fmt: skip
 
-    def settled(self, did: str, fill_id: str, portfolio: dict, newly_applied: bool, t: datetime) -> None:
+    def settled(
+        self, did: str, fill_id: str, portfolio: dict, newly_applied: bool, t: datetime
+    ) -> None:
         self._e(EventType.PORTFOLIO_SETTLED, {"fill_id": fill_id, "portfolio_snapshot": portfolio,
                                               "newly_applied": newly_applied}, did=did, key=fill_id, at=t)  # fmt: skip
 
-    def recon(self, key: str, ok: bool, mismatches: list, detail: dict, decision_ids: list[str], t: datetime) -> None:
+    def recon(
+        self,
+        key: str,
+        ok: bool,
+        mismatches: list,
+        detail: dict,
+        decision_ids: list[str],
+        t: datetime,
+    ) -> None:
         self._e(EventType.RECONCILIATION_RESULT, {"ok": ok, "mismatches": mismatches, **detail},
                 key=key, links={"decision_ids": sorted(decision_ids)}, at=t)  # fmt: skip
 
-    def finalize(self, did: str, record: DecisionRecord, t: datetime, extra: dict | None = None, legacy_id: str | None = None) -> None:
+    def finalize(
+        self,
+        did: str,
+        record: DecisionRecord,
+        t: datetime,
+        extra: dict | None = None,
+        legacy_id: str | None = None,
+    ) -> None:
         rec = replace(record, decision_id=did)
         self._e(EventType.DECISION_FINALIZED, {
             "terminal_state": rec.terminal_state, "decision_record": rec, "legacy_decision_record_id": legacy_id,
@@ -169,8 +219,17 @@ class RunJournal:
         }, did=did, at=t)  # fmt: skip
         self.open.pop(did, None)
 
-    def no_order_record(self, state: TerminalState, t: datetime, instrument_id: str, snap, cand, risk_rule_version_id: str,
-                        cfg_id: str, risk_decision_id: str | None = None) -> DecisionRecord:  # noqa: ANN001
+    def no_order_record(
+        self,
+        state: TerminalState,
+        t: datetime,
+        instrument_id: str,
+        snap,
+        cand,
+        risk_rule_version_id: str,
+        cfg_id: str,
+        risk_decision_id: str | None = None,
+    ) -> DecisionRecord:  # noqa: ANN001
         return DecisionRecord(
             instrument_id=instrument_id, cycle_timestamp=t, autonomy_level=AUTONOMY, input_snapshot_id=snap.snapshot_id,
             data_sources=tuple(DataSourceRef(r.source, snap.data_snapshot_version or "UNKNOWN", r.timestamp) for r in snap.source_refs),

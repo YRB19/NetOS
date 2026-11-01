@@ -29,6 +29,8 @@ def reconcile(
     broker_cash: Decimal,
     broker_positions: Mapping[str, int],
 ) -> ReconciliationResult:
-    mism = compare_cash_positions(portfolio_cash, portfolio_positions, broker_cash, broker_positions)
+    mism = compare_cash_positions(
+        portfolio_cash, portfolio_positions, broker_cash, broker_positions
+    )
     return ReconciliationResult(not mism, tuple(mism), portfolio_cash, broker_cash,
                                 dict(portfolio_positions), dict(broker_positions))  # fmt: skip

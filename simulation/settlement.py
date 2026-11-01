@@ -13,16 +13,30 @@ from research.harness.failures import FailureCategory, ResearchRunFailure
 from research.harness.portfolio import FillApplication, ResearchPortfolio
 
 
-def apply_pending_fills(mgr: OrderLifecycleManager, portfolio: ResearchPortfolio) -> list[FillApplication]:
+def apply_pending_fills(
+    mgr: OrderLifecycleManager, portfolio: ResearchPortfolio
+) -> list[FillApplication]:
     results: list[FillApplication] = []
     for key, f in mgr.fills_pending_portfolio_application():
         rec = mgr.record(key)
-        if rec is None or f.charges_total is None:  # cash effect unverifiable: never guess a cost of zero
-            raise ResearchRunFailure(FailureCategory.RECONCILIATION_REQUIRED,
-                                     f"fill {f.fill_id} cannot be settled: charges unknown or order record missing",
-                                     fill_id=f.fill_id)
-        app = portfolio.apply_fill(f.fill_id, rec.request.instrument_id, f.side, f.quantity, f.price, f.charges_total,
-                                   order_id=f.order_id, source=f.source)
+        if (
+            rec is None or f.charges_total is None
+        ):  # cash effect unverifiable: never guess a cost of zero
+            raise ResearchRunFailure(
+                FailureCategory.RECONCILIATION_REQUIRED,
+                f"fill {f.fill_id} cannot be settled: charges unknown or order record missing",
+                fill_id=f.fill_id,
+            )
+        app = portfolio.apply_fill(
+            f.fill_id,
+            rec.request.instrument_id,
+            f.side,
+            f.quantity,
+            f.price,
+            f.charges_total,
+            order_id=f.order_id,
+            source=f.source,
+        )
         mgr.mark_portfolio_applied(f.fill_id)
         results.append(app)
     return results
