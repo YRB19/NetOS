@@ -30,8 +30,12 @@ from shared.versioning.identifiers import new_id
 
 
 _NO_ORDER_STATES = frozenset(
-    {TerminalState.HOLD, TerminalState.NO_TRADE, TerminalState.SKIPPED_PENDING_ORDER,
-     TerminalState.REJECTED_INVALID_CANDIDATE}
+    {
+        TerminalState.HOLD,
+        TerminalState.NO_TRADE,
+        TerminalState.SKIPPED_PENDING_ORDER,
+        TerminalState.REJECTED_INVALID_CANDIDATE,
+    }
 )  # Slice 8 additive states: none may reference an order
 
 
@@ -111,9 +115,16 @@ class DecisionRecord:
                 )
 
         if self.terminal_state in _NO_ORDER_STATES and self.order_id is not None:
-            raise ValueError(f"terminal_state={self.terminal_state.value} must not reference an order_id.")
-        if self.terminal_state is TerminalState.REJECTED_INVALID_CANDIDATE and self.risk_decision_id is not None:
-            raise ValueError("an invalid candidate never reaches risk evaluation; risk_decision_id must be None.")
+            raise ValueError(
+                f"terminal_state={self.terminal_state.value} must not reference an order_id."
+            )
+        if (
+            self.terminal_state is TerminalState.REJECTED_INVALID_CANDIDATE
+            and self.risk_decision_id is not None
+        ):
+            raise ValueError(
+                "an invalid candidate never reaches risk evaluation; risk_decision_id must be None."
+            )
 
     def is_finalized(self) -> bool:
         return self.finalized_at is not None

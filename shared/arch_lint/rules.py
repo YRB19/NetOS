@@ -192,8 +192,14 @@ _SLICE6_RULES: tuple[ForbiddenImportRule, ...] = (
     *(
         _r(src, "simulation", "simulation is a leaf orchestrator; no plane may depend on it")
         for src in (
-            "domain", "data", "intelligence", "risk_execution", "observability",
-            "research", "shared", "governance",
+            "domain",
+            "data",
+            "intelligence",
+            "risk_execution",
+            "observability",
+            "research",
+            "shared",
+            "governance",
         )
     ),
     # orchestrator is strategy-agnostic and adapter-free
@@ -208,7 +214,9 @@ _SLICE6_RULES: tuple[ForbiddenImportRule, ...] = (
     _r("risk_execution.risk_engine", "risk_execution.broker", "risk must not depend on broker"),
     # Sizing independence (§21)
     _r("risk_execution.sizing", "risk_execution.broker", "sizing must not depend on broker"),
-    _r("risk_execution.sizing", "risk_execution.risk_engine", "sizing consumes a RiskDecision only"),
+    _r(
+        "risk_execution.sizing", "risk_execution.risk_engine", "sizing consumes a RiskDecision only"
+    ),
     # Simulated broker independence (§38)
     _r("risk_execution.broker", "risk_execution.risk_engine", "broker must not import risk logic"),
     _r("risk_execution.broker", "risk_execution.sizing", "broker must not import sizing logic"),
@@ -224,24 +232,71 @@ RULES = RULES + _SLICE6_RULES
 # import risk logic or sizing (so they cannot manufacture approvals or OrderRequests), research,
 # the orchestrator, strategies or data adapters; and risk/sizing/broker may not depend on them.
 _S7 = "Slice 7 / ADR-10: "
-_SLICE7_RULES: tuple[ForbiddenImportRule, ...] = tuple(
-    ForbiddenImportRule(src, target, _S7 + why)
-    for src in ("risk_execution.order_lifecycle", "risk_execution.reconciliation")
-    for target, why in (
-        ("risk_execution.risk_engine", "must not manufacture approvals"),
-        ("risk_execution.sizing", "only sizing creates OrderRequests"),
-        ("research", "execution never depends on research"),
-        ("simulation", "orchestrator is a leaf"),
-        ("intelligence", "no strategy/LLM access"),
-        ("governance", "no governance access"),
-        ("data.adapters", "no data sources"),
+_SLICE7_RULES: tuple[ForbiddenImportRule, ...] = (
+    tuple(
+        ForbiddenImportRule(src, target, _S7 + why)
+        for src in ("risk_execution.order_lifecycle", "risk_execution.reconciliation")
+        for target, why in (
+            ("risk_execution.risk_engine", "must not manufacture approvals"),
+            ("risk_execution.sizing", "only sizing creates OrderRequests"),
+            ("research", "execution never depends on research"),
+            ("simulation", "orchestrator is a leaf"),
+            ("intelligence", "no strategy/LLM access"),
+            ("governance", "no governance access"),
+            ("data.adapters", "no data sources"),
+        )
     )
-) + tuple(
-    ForbiddenImportRule(src, target, _S7 + "risk/sizing/broker stay independent of lifecycle bookkeeping")
-    for src in ("risk_execution.risk_engine", "risk_execution.sizing", "risk_execution.broker")
-    for target in ("risk_execution.order_lifecycle", "risk_execution.reconciliation")
-) + (
-    ForbiddenImportRule("risk_execution.order_lifecycle", "risk_execution.reconciliation",
-                        _S7 + "reconciliation reads the lifecycle, never the reverse"),
+    + tuple(
+        ForbiddenImportRule(
+            src, target, _S7 + "risk/sizing/broker stay independent of lifecycle bookkeeping"
+        )
+        for src in ("risk_execution.risk_engine", "risk_execution.sizing", "risk_execution.broker")
+        for target in ("risk_execution.order_lifecycle", "risk_execution.reconciliation")
+    )
+    + (
+        ForbiddenImportRule(
+            "risk_execution.order_lifecycle",
+            "risk_execution.reconciliation",
+            _S7 + "reconciliation reads the lifecycle, never the reverse",
+        ),
+    )
 )
 RULES = RULES + _SLICE7_RULES
+
+
+# ---------------------------------------------------------------------------
+# Slice 10 additions — Operator Console read API (ADR-21)
+# ---------------------------------------------------------------------------
+# `console_api` is a READ-ONLY leaf. It may read persisted artifacts and use the journal's read/verify
+# contract, but it can never reach execution, strategy, risk, sizing, broker, simulation, governance,
+# data-adapter or research code, nor the journal's write-path recorder; and nothing may depend on it.
+_S10 = "Slice 10 / ADR-21: "
+_SLICE10_RULES: tuple[ForbiddenImportRule, ...] = tuple(
+    ForbiddenImportRule("console_api", target, _S10 + why)
+    for target, why in (
+        ("risk_execution", "console has no trading authority and no execution internals"),
+        ("intelligence", "console never runs strategies"),
+        ("governance", "console cannot touch kill switch/config"),
+        ("simulation", "console never launches a pipeline"),
+        ("data", "console reads persisted artifacts only"),
+        ("domain", "console reads JSON artifacts, not domain constructors"),
+        ("research", "console reads persisted research artifacts, never the harness"),
+        ("observability.decision_log.recorder", "console must not use the journal write path"),
+    )
+) + tuple(
+    ForbiddenImportRule(
+        src, "console_api", _S10 + "console_api is a leaf; no plane may depend on it"
+    )
+    for src in (
+        "domain",
+        "data",
+        "intelligence",
+        "risk_execution",
+        "observability",
+        "research",
+        "shared",
+        "governance",
+        "simulation",
+    )
+)
+RULES = RULES + _SLICE10_RULES

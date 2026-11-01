@@ -120,7 +120,9 @@ class Tier2Momentum12_1:  # noqa: N801 - name mirrors the strategy label
         permitted = sorted(universe.instrument_ids)
         for i in permitted:
             if i not in by_inst:
-                raise ValueError(f"Tier2Momentum: no FeatureSnapshot for permitted instrument {i!r}")
+                raise ValueError(
+                    f"Tier2Momentum: no FeatureSnapshot for permitted instrument {i!r}"
+                )
         _added, removed = universe.diff(previous_universe)
         for i in sorted(removed):
             if i not in by_inst:

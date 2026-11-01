@@ -34,6 +34,7 @@ FIRST_PARTY_TOP_LEVEL = {
     "shared",
     "governance",
     "simulation",
+    "console_api",
 }
 
 

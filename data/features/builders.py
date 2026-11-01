@@ -42,8 +42,16 @@ class ContextFeatureBuilder:
     def identity(self) -> dict:
         return {"builder": "ContextFeatureBuilder", "feature_set_id": self.feature_set_id}
 
-    def build(self, visible, universe, as_of, *, market_data_snapshot_version,
-              staleness_threshold=DEFAULT_STALENESS_THRESHOLD, instrument_ids=None):  # noqa: ANN001
+    def build(
+        self,
+        visible,
+        universe,
+        as_of,
+        *,
+        market_data_snapshot_version,
+        staleness_threshold=DEFAULT_STALENESS_THRESHOLD,
+        instrument_ids=None,
+    ):  # noqa: ANN001
         return build_feature_snapshots(
             visible, universe, as_of,
             market_data_snapshot_version=market_data_snapshot_version,
