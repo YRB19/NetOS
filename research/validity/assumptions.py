@@ -29,7 +29,10 @@ class ExecutionAssumptions:
     def disclosures(self) -> dict:
         return {
             "version": self.version,
-            "booked_fill_price": {"status": "ASSUMED_UNVERIFIED", "detail": "NEXT_BAR_OPEN fills at the bar open; no verified execution-quality evidence"},  # fmt: skip
+            "booked_fill_price": {
+                "status": "ASSUMED_UNVERIFIED",
+                "detail": "NEXT_BAR_OPEN fills at the bar open; no verified execution-quality evidence",
+            },  # fmt: skip
             "slippage_booked_trades": AssumptionStatus.UNMODELLED.value,
             "spread": AssumptionStatus.UNMODELLED.value,
             "market_impact": AssumptionStatus.UNMODELLED.value,
@@ -37,9 +40,20 @@ class ExecutionAssumptions:
             "partial_fills": AssumptionStatus.UNMODELLED.value,
             "terminal_slippage": {
                 "status": self.terminal_slippage_status.value,
-                "bps": str(self.terminal_slippage_bps) if self.terminal_slippage_bps is not None else None,
+                "bps": str(self.terminal_slippage_bps)
+                if self.terminal_slippage_bps is not None
+                else None,
             },
-            "terminal_liquidation_price": {"status": "ASSUMED_UNVERIFIED", "detail": "last mark close"},
-            "brokerage": {"status": "ASSUMED_UNVERIFIED", "detail": "unverified in both cost schedules"},
-            "statutory_cost_scope": {"status": "PARTIAL", "detail": "see docs/cost-rate-verification.md"},
+            "terminal_liquidation_price": {
+                "status": "ASSUMED_UNVERIFIED",
+                "detail": "last mark close",
+            },
+            "brokerage": {
+                "status": "ASSUMED_UNVERIFIED",
+                "detail": "unverified in both cost schedules",
+            },
+            "statutory_cost_scope": {
+                "status": "PARTIAL",
+                "detail": "see docs/cost-rate-verification.md",
+            },
         }

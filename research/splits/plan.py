@@ -58,7 +58,9 @@ def purge_boundary(train_end: datetime, test_start: datetime, horizon_days: int 
         raise ValueError("horizon_days and embargo_days must be >= 0")
     if horizon_days == 0 and embargo_days == 0:
         if not justification:
-            raise ValueError("horizon 0 / embargo 0 requires a written justification (no arbitrary gap, no silent skip)")
+            raise ValueError(
+                "horizon 0 / embargo 0 requires a written justification (no arbitrary gap, no silent skip)"
+            )
         status = "NOT_REQUIRED_JUSTIFIED"
     else:
         status = "APPLIED"
@@ -75,10 +77,16 @@ def validate_split_with_horizon(split: SplitSpec, horizon_days: int | None, emba
     out = {"train_to_test" if empty_val else "train_to_validation": None}
     out = {}
     if empty_val:
-        out["train_to_test"] = purge_boundary(split.train_end, split.test_start, horizon_days, embargo_days, justification).to_dict()
+        out["train_to_test"] = purge_boundary(
+            split.train_end, split.test_start, horizon_days, embargo_days, justification
+        ).to_dict()
     else:
-        out["train_to_validation"] = purge_boundary(split.train_end, split.validation_start, horizon_days, embargo_days, justification).to_dict()
-        out["validation_to_test"] = purge_boundary(split.validation_end, split.test_start, horizon_days, embargo_days, justification).to_dict()
+        out["train_to_validation"] = purge_boundary(
+            split.train_end, split.validation_start, horizon_days, embargo_days, justification
+        ).to_dict()
+        out["validation_to_test"] = purge_boundary(
+            split.validation_end, split.test_start, horizon_days, embargo_days, justification
+        ).to_dict()
     return out
 
 
@@ -115,7 +123,11 @@ class WalkForwardPlan:
     rolling_train_days: int | None = None
 
     def windows(self) -> list[WalkForwardWindow]:
-        for n, v in (("initial_train_days", self.initial_train_days), ("test_days", self.test_days), ("step_days", self.step_days)):
+        for n, v in (
+            ("initial_train_days", self.initial_train_days),
+            ("test_days", self.test_days),
+            ("step_days", self.step_days),
+        ):
             if isinstance(v, bool) or not isinstance(v, int) or v < 1:
                 raise ValueError(f"{n} must be a positive int")
         if self.mode is WalkForwardMode.ROLLING and not self.rolling_train_days:
@@ -133,9 +145,19 @@ class WalkForwardPlan:
             if self.mode is WalkForwardMode.EXPANDING:
                 train_start = self.data_start
             else:
-                train_start = max(self.data_start, test_start - timedelta(days=self.rolling_train_days))  # type: ignore[arg-type]
-            purge = purge_boundary(train_end, test_start, self.horizon_days, self.embargo_days, self.purge_justification)
-            out.append(WalkForwardWindow(i, train_start, train_end, test_start, test_end, purge, i > 0))
+                train_start = max(
+                    self.data_start, test_start - timedelta(days=self.rolling_train_days)
+                )  # type: ignore[arg-type]
+            purge = purge_boundary(
+                train_end,
+                test_start,
+                self.horizon_days,
+                self.embargo_days,
+                self.purge_justification,
+            )
+            out.append(
+                WalkForwardWindow(i, train_start, train_end, test_start, test_end, purge, i > 0)
+            )
             i += 1
             test_start = test_start + timedelta(days=self.step_days)
         # test windows must not overlap each other (OOS results are independent segments)
@@ -145,7 +167,9 @@ class WalkForwardPlan:
         return out
 
     def plan_hash(self) -> str:
-        return hash_json_stable({"plan": dataclasses.asdict(self), "windows": [w.to_dict() for w in self.windows()]})
+        return hash_json_stable(
+            {"plan": dataclasses.asdict(self), "windows": [w.to_dict() for w in self.windows()]}
+        )
 
 
 @dataclass(frozen=True)
@@ -173,13 +197,17 @@ def run_walk_forward(harness, plan: WalkForwardPlan, base_config: ResearchConfig
     try:
         wins = plan.windows()
     except ValueError as e:
-        return WalkForwardOutcome("UNSUPPORTED", str(e), None, (), "NOT_APPLICABLE_FIXED_CONFIGURATION")
+        return WalkForwardOutcome(
+            "UNSUPPORTED", str(e), None, (), "NOT_APPLICABLE_FIXED_CONFIGURATION"
+        )
     if not wins:
         return WalkForwardOutcome("UNSUPPORTED", "no complete walk-forward window fits the data range", None, (), "NOT_APPLICABLE_FIXED_CONFIGURATION")  # fmt: skip
     results = []
     for w in wins:
         split = two_way_split(w.train_start, w.train_end, w.test_start, w.test_end)
-        cfg = dataclasses.replace(base_config, split=split, evaluation_period=EvaluationPeriod.OUT_OF_SAMPLE)
+        cfg = dataclasses.replace(
+            base_config, split=split, evaluation_period=EvaluationPeriod.OUT_OF_SAMPLE
+        )
         try:
             r: ResearchRunResult = harness.run(cfg, strategy, market_data, universe_schedule)
         except ResearchRunFailure as f:  # pragma: no cover - harness returns FAILED results

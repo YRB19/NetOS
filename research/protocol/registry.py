@@ -59,7 +59,9 @@ class ProtocolRegistry:
         if protocol.version > 1:
             prior = self._path(protocol.protocol_id, protocol.version - 1)
             if not prior.exists():
-                raise ProtocolError(f"v{protocol.version} requires registered v{protocol.version - 1}")
+                raise ProtocolError(
+                    f"v{protocol.version} requires registered v{protocol.version - 1}"
+                )
             prior_hash = json.loads(prior.read_text(encoding="utf-8"))["protocol_hash"]
             if protocol.supersedes_protocol_hash != prior_hash:
                 raise ProtocolError("supersedes_protocol_hash does not match the prior version")
@@ -81,8 +83,9 @@ class ProtocolRegistry:
             raise ProtocolError(f"stored protocol {protocol_id} v{version} fails hash verification")
         # The live dataclass is not reconstructed from JSON; callers keep the object they
         # registered. We return the stored payload's hash/time and verify identity separately.
-        return RegisteredProtocol(None, stored["protocol_hash"],
-                                  datetime.fromisoformat(stored["registered_at"]))
+        return RegisteredProtocol(
+            None, stored["protocol_hash"], datetime.fromisoformat(stored["registered_at"])
+        )
 
     def verify_registered_before(
         self, protocol: ExperimentProtocol, evaluation_started_at: datetime

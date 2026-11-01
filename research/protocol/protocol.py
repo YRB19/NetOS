@@ -113,8 +113,10 @@ class ExperimentProtocol:
             if not self.acceptance_criteria:
                 errs.append("a confirmatory protocol needs structured acceptance_criteria")
             if self.information_horizon_days is None:
-                errs.append("a confirmatory protocol must declare information_horizon_days "
-                            "(0 is allowed with justification in the unverified/links notes)")
+                errs.append(
+                    "a confirmatory protocol must declare information_horizon_days "
+                    "(0 is allowed with justification in the unverified/links notes)"
+                )
             if self.strategy_configured_through is None:
                 errs.append("a confirmatory protocol must declare strategy_configured_through")
         for c in self.acceptance_criteria:

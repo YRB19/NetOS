@@ -162,9 +162,9 @@ class ResearchHarness:
         try:
             data_version = compute_market_data_snapshot_version(list(market_data))
             if self._availability is not None:
-                data_version = "pit_" + hash_json_stable(
-                    [data_version, self._availability.fingerprint()]
-                )[:32]
+                data_version = (
+                    "pit_" + hash_json_stable([data_version, self._availability.fingerprint()])[:32]
+                )
         except Exception:
             data_version = "UNAVAILABLE"
         uni_sched = _safe_universe_schedule(universe_schedule)

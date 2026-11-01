@@ -57,7 +57,11 @@ class VersionedObservation:
             raise ValueError(f"basis {self.basis.value} requires available_at")
         if self.available_at is not None and self.available_at.tzinfo is None:
             raise ValueError("available_at must be timezone-aware")
-        if isinstance(self.revision, bool) or not isinstance(self.revision, int) or self.revision < 0:
+        if (
+            isinstance(self.revision, bool)
+            or not isinstance(self.revision, int)
+            or self.revision < 0
+        ):
             raise ValueError("revision must be a non-negative int")
 
     @property
@@ -114,7 +118,7 @@ class AvailabilityLedger:
 
     def resolve(self, as_of: datetime) -> list[MarketData]:
         out = []
-        for (inst, ts) in sorted(self._by_key, key=lambda k: (k[1], k[0])):
+        for inst, ts in sorted(self._by_key, key=lambda k: (k[1], k[0])):
             if ts > as_of:
                 break
             md = self.resolve_one(inst, ts, as_of)
@@ -140,7 +144,10 @@ class AvailabilityLedger:
 
     def latest_market_data(self) -> list[MarketData]:
         """Latest revision per key, regardless of when it became available (for versioning)."""
-        return [lst[-1].market_data for _, lst in sorted(self._by_key.items(), key=lambda kv: (kv[0][1], kv[0][0]))]
+        return [
+            lst[-1].market_data
+            for _, lst in sorted(self._by_key.items(), key=lambda kv: (kv[0][1], kv[0][0]))
+        ]
 
     def report(self) -> dict:
         st = self.status()
@@ -157,7 +164,8 @@ class AvailabilityLedger:
                 o.basis is AvailabilityBasis.INGESTION_RECORDED for o in self.observations
             ),
             "fingerprint": self.fingerprint(),
-            "clean_point_in_time_claim": st in (PitStatus.VERIFIED, PitStatus.VERIFIED_INGESTION_BASED),
+            "clean_point_in_time_claim": st
+            in (PitStatus.VERIFIED, PitStatus.VERIFIED_INGESTION_BASED),
         }
 
 
@@ -178,7 +186,9 @@ class PointInTimeReplay:
         self._cycle_avail = {}
         for o in known:
             cur = self._cycle_avail.get(o.key[1])
-            self._cycle_avail[o.key[1]] = o.available_at if cur is None else min(cur, o.available_at)  # type: ignore[type-var]
+            self._cycle_avail[o.key[1]] = (
+                o.available_at if cur is None else min(cur, o.available_at)
+            )  # type: ignore[type-var]
 
     def require_instruments(self, instrument_ids: Iterable[str]) -> None:
         missing = sorted(set(instrument_ids) - self.instrument_ids)

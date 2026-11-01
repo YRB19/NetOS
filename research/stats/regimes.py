@@ -36,7 +36,9 @@ class RegimeDefinition:
     retrospective: bool = False  # True = labels may use whole-window info; descriptive only
 
 
-def equal_weight_index(market_data: list[MarketData], instruments: set[str]) -> list[tuple[datetime, Decimal]]:
+def equal_weight_index(
+    market_data: list[MarketData], instruments: set[str]
+) -> list[tuple[datetime, Decimal]]:
     """Level series (start 100) from average simple close-to-close return across instruments
     that have bars on both consecutive timestamps."""
     by_ts: dict[datetime, dict[str, Decimal]] = defaultdict(dict)
@@ -70,7 +72,7 @@ def classify(series: list[tuple[datetime, Decimal]], d: RegimeDefinition) -> dic
         if i < d.lookback:
             labels[t] = "UNCLASSIFIED_INSUFFICIENT_HISTORY"
             continue
-        window = levels[i - d.lookback: i + 1]
+        window = levels[i - d.lookback : i + 1]
         if d.dimension is RegimeDimension.TREND:
             cum = window[-1] / window[0] - 1
             if cum > d.up_threshold:
@@ -88,7 +90,9 @@ def classify(series: list[tuple[datetime, Decimal]], d: RegimeDefinition) -> dic
     return labels
 
 
-def segment_equity(equity_curve: list[dict], labels: dict[datetime, str], d: RegimeDefinition) -> dict:
+def segment_equity(
+    equity_curve: list[dict], labels: dict[datetime, str], d: RegimeDefinition
+) -> dict:
     """Per-regime compounded return and counts over the run's equity curve."""
     if d.dimension is RegimeDimension.LIQUIDITY:
         return {"status": "UNSUPPORTED", "reason": "no verified liquidity/depth input exists",

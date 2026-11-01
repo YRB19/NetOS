@@ -53,7 +53,11 @@ class HoldoutRegistry:
         return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
     def status(self, holdout_id: str) -> HoldoutStatus:
-        return HoldoutStatus.REUSED_NON_CONFIRMATORY if self.exposures(holdout_id) else HoldoutStatus.UNTOUCHED
+        return (
+            HoldoutStatus.REUSED_NON_CONFIRMATORY
+            if self.exposures(holdout_id)
+            else HoldoutStatus.UNTOUCHED
+        )
 
     def expose(self, *, holdout_id: str, protocol_id: str, protocol_hash: str | None,
                run_id: str | None, mode: str, policy: HoldoutReusePolicy) -> HoldoutStatus:  # fmt: skip
@@ -69,9 +73,13 @@ class HoldoutRegistry:
         status = HoldoutStatus.REUSED_NON_CONFIRMATORY if prior else HoldoutStatus.UNTOUCHED
         self._dir.mkdir(parents=True, exist_ok=True)
         rec = {
-            "holdout_id": holdout_id, "exposure_number": len(prior) + 1,
-            "protocol_id": protocol_id, "protocol_hash": protocol_hash, "run_id": run_id,
-            "mode": mode, "status_at_exposure": status.value,
+            "holdout_id": holdout_id,
+            "exposure_number": len(prior) + 1,
+            "protocol_id": protocol_id,
+            "protocol_hash": protocol_hash,
+            "run_id": run_id,
+            "mode": mode,
+            "status_at_exposure": status.value,
             "recorded_at": ensure_utc(self._clock()).isoformat(),
         }
         with open(self._path(holdout_id), "a", encoding="utf-8") as f:

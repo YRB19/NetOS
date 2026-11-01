@@ -39,18 +39,39 @@ def assess_quality(market_data: list[MarketData], universes: list[PermittedUnive
         first, last = min(have), max(have)
         missing = [t for t in all_ts if first <= t <= last and t not in have]
         if missing:
-            warn("MISSING_BARS", "WARNING", f"{inst} lacks {len(missing)} bar(s) other instruments have", [inst])
+            warn(
+                "MISSING_BARS",
+                "WARNING",
+                f"{inst} lacks {len(missing)} bar(s) other instruments have",
+                [inst],
+            )
         rows.sort(key=lambda r: r.timestamp)
         run = 1
         for a, b in zip(rows, rows[1:], strict=False):
-            same = (a.open, a.high, a.low, a.close, a.volume) == (b.open, b.high, b.low, b.close, b.volume)
+            same = (a.open, a.high, a.low, a.close, a.volume) == (
+                b.open,
+                b.high,
+                b.low,
+                b.close,
+                b.volume,
+            )
             run = run + 1 if same else 1
             if run == stale_run_length:
-                warn("STALE_OBSERVATIONS", "WARNING", f"{inst} has {stale_run_length}+ identical consecutive bars", [inst])
+                warn(
+                    "STALE_OBSERVATIONS",
+                    "WARNING",
+                    f"{inst} has {stale_run_length}+ identical consecutive bars",
+                    [inst],
+                )
                 break
         flags = {r.adjusted for r in rows}
         if len(flags) > 1:
-            warn("CORPORATE_ACTION_ADJUSTMENT_MISMATCH", "ERROR", f"{inst} mixes adjusted and as-traded bars", [inst])
+            warn(
+                "CORPORATE_ACTION_ADJUSTMENT_MISMATCH",
+                "ERROR",
+                f"{inst} mixes adjusted and as-traded bars",
+                [inst],
+            )
     universe_ids = {i for u in universes for i in u.instrument_ids}
     unknown = set(by_inst) - universe_ids
     if unknown:
@@ -64,13 +85,25 @@ def assess_quality(market_data: list[MarketData], universes: list[PermittedUnive
                 warn("POSSIBLE_SURVIVORSHIP_BIAS", "WARNING",
                      f"instruments removed between {a.version} and {b.version} with no recorded delisting", list(undocumented))  # fmt: skip
     if not provenance.survivorship_free_claimed:
-        warn("SURVIVORSHIP_NOT_ESTABLISHED", "WARNING", "dataset not established as survivorship-free")
+        warn(
+            "SURVIVORSHIP_NOT_ESTABLISHED",
+            "WARNING",
+            "dataset not established as survivorship-free",
+        )
     if provenance.is_synthetic:
-        warn("SYNTHETIC_DATA", "INFO", "synthetic fixture: infrastructure check only, not market evidence")
+        warn(
+            "SYNTHETIC_DATA",
+            "INFO",
+            "synthetic fixture: infrastructure check only, not market evidence",
+        )
     if not provenance.is_synthetic and not provenance.source_verified:
         warn("UNVERIFIED_HISTORY_SOURCE", "ERROR", "historical source is not verified")
     if not provenance.is_synthetic and not provenance.point_in_time_verified:
-        warn("POINT_IN_TIME_NOT_VERIFIED", "ERROR", "point-in-time provenance inadequate for a clean historical claim")
+        warn(
+            "POINT_IN_TIME_NOT_VERIFIED",
+            "ERROR",
+            "point-in-time provenance inadequate for a clean historical claim",
+        )
     if provenance.corporate_actions_source is None and not provenance.is_synthetic:
         warn("CORPORATE_ACTION_SOURCE_MISSING", "WARNING", "no corporate-action source recorded")
     if provenance.is_synthetic:
