@@ -1,0 +1,7 @@
+{
+  "name": "netos-operator-console-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency, no-build read-only console UI (ADR-21). Tests use node:test only.",
+  "scripts": { "test": "node --test tests/console.test.mjs tests/command-centre.test.mjs" }
+}
