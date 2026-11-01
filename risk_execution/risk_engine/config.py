@@ -59,7 +59,10 @@ class RiskConfig:
             v = getattr(self, name)
             if not _is_decimal(v) or not (Decimal(0) < Decimal(v) <= Decimal(1)):
                 e.append(f"{name} must be a decimal in (0, 1], got {v!r}")
-        for name in ("max_gross_exposure_fraction", "max_leverage"):  # both positive; the stricter binds
+        for name in (
+            "max_gross_exposure_fraction",
+            "max_leverage",
+        ):  # both positive; the stricter binds
             v = getattr(self, name)
             if not _is_decimal(v) or Decimal(v) <= 0:
                 e.append(f"{name} must be a positive decimal, got {v!r}")
@@ -67,7 +70,10 @@ class RiskConfig:
             v = getattr(self, name)
             if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
                 e.append(f"{name} must be a positive int, got {v!r}")
-        if not isinstance(self.permitted_account_scope, str) or not self.permitted_account_scope.strip():
+        if (
+            not isinstance(self.permitted_account_scope, str)
+            or not self.permitted_account_scope.strip()
+        ):
             e.append("permitted_account_scope must be a non-empty string")
         if not isinstance(self.allow_exit_of_removed_instruments, bool):
             e.append("allow_exit_of_removed_instruments must be a bool")
@@ -95,7 +101,9 @@ class RiskConfig:
         return hash_json_stable(self.payload())
 
     def risk_rule_version(self) -> RiskRuleVersion:
-        return RiskRuleVersion(rule_set_hash=self.rule_set_hash(), effective_from=self.effective_from)
+        return RiskRuleVersion(
+            rule_set_hash=self.rule_set_hash(), effective_from=self.effective_from
+        )
 
     def configuration_version(self, set_by: str = "operator") -> ConfigurationVersion:
         """Deterministic ConfigurationVersion (existing mechanism) for this risk config."""

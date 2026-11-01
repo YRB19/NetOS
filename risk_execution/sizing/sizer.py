@@ -106,7 +106,10 @@ def _floor(x: Decimal) -> int:
 
 
 def size_order(
-    candidate: CandidateTrade, risk_decision: RiskDecision, inputs: SizingInputs, config: SizingConfig
+    candidate: CandidateTrade,
+    risk_decision: RiskDecision,
+    inputs: SizingInputs,
+    config: SizingConfig,
 ) -> SizingDecision:
     """Never raises. Anything not provably valid -> no OrderRequest."""
     try:
@@ -116,17 +119,35 @@ def size_order(
                    f"sizing error: {type(e).__name__}: {e}")  # fmt: skip
 
 
-def _size(c: CandidateTrade, rd: RiskDecision, inp: SizingInputs, cfg: SizingConfig) -> SizingDecision:
+def _size(
+    c: CandidateTrade, rd: RiskDecision, inp: SizingInputs, cfg: SizingConfig
+) -> SizingDecision:
     # 1. approval is verified, never assumed (veto cannot become an order)
     if not isinstance(rd, RiskDecision) or rd.final_verdict is not RiskVerdict.APPROVE:
         return _no(c, rd, SizingOutcome.REFUSED_NOT_APPROVED, "risk decision is not an APPROVE")
     if not isinstance(c, CandidateTrade) or rd.candidate_trade_id != c.candidate_id:
-        return _no(c, rd, SizingOutcome.REFUSED_NOT_APPROVED, "risk decision does not belong to this candidate")
-    if any(not k.passed for k in rd.checks_evaluated) or rd.approved_qty is None or rd.approved_qty < 1:
-        return _no(c, rd, SizingOutcome.REFUSED_NOT_APPROVED, "risk decision carries a failed check or no ceiling")
+        return _no(
+            c,
+            rd,
+            SizingOutcome.REFUSED_NOT_APPROVED,
+            "risk decision does not belong to this candidate",
+        )
+    if (
+        any(not k.passed for k in rd.checks_evaluated)
+        or rd.approved_qty is None
+        or rd.approved_qty < 1
+    ):
+        return _no(
+            c,
+            rd,
+            SizingOutcome.REFUSED_NOT_APPROVED,
+            "risk decision carries a failed check or no ceiling",
+        )
     errs = cfg.validate()
     if errs:
-        return _no(c, rd, SizingOutcome.REJECTED_INVALID_INPUT, "invalid sizing config: " + "; ".join(errs))
+        return _no(
+            c, rd, SizingOutcome.REJECTED_INVALID_INPUT, "invalid sizing config: " + "; ".join(errs)
+        )
     if c.action not in (Action.BUY, Action.SELL):
         return _no(c, rd, SizingOutcome.NO_TRADE, f"{c.action.value} requests no order")
 
@@ -139,7 +160,12 @@ def _size(c: CandidateTrade, rd: RiskDecision, inp: SizingInputs, cfg: SizingCon
     if not isinstance(pf, PortfolioState):
         return _no(c, rd, SizingOutcome.REJECTED_INVALID_INPUT, "portfolio state missing", p)
     h = c.size_hint
-    if isinstance(h, bool) or not isinstance(h, (int, float)) or not math.isfinite(h) or not (0 <= h <= 1):
+    if (
+        isinstance(h, bool)
+        or not isinstance(h, (int, float))
+        or not math.isfinite(h)
+        or not (0 <= h <= 1)
+    ):
         return _no(c, rd, SizingOutcome.REJECTED_INVALID_INPUT, f"invalid size_hint {h!r}", p)
     for n in (inp.pending_buy_qty, inp.pending_sell_qty):
         if isinstance(n, bool) or not isinstance(n, int) or n < 0:
@@ -161,7 +187,11 @@ def _size(c: CandidateTrade, rd: RiskDecision, inp: SizingInputs, cfg: SizingCon
         afford = _floor(cash_avail / p) if cash_avail > 0 else 0
         qty = max(0, min(want, ceiling, afford))
         if qty <= 0:
-            why = "already at/above target" if want <= 0 else ("insufficient cash" if afford <= 0 else "risk ceiling")
+            why = (
+                "already at/above target"
+                if want <= 0
+                else ("insufficient cash" if afford <= 0 else "risk ceiling")
+            )
             return SizingDecision(c.candidate_id, rd.risk_decision_id, SizingOutcome.NO_TRADE,
                                   f"BUY quantity is 0 ({why})", Action.BUY, 0, target_value, p,
                                   cash)  # fmt: skip
@@ -193,7 +223,8 @@ def _size(c: CandidateTrade, rd: RiskDecision, inp: SizingInputs, cfg: SizingCon
         quantity=float(qty),
         order_type=OrderType.MARKET,
         risk_decision_id=rd.risk_decision_id,
-        idempotency_key="idem_" + hash_json_stable([inp.research_run_id, c.candidate_id, side.value])[:24],
+        idempotency_key="idem_"
+        + hash_json_stable([inp.research_run_id, c.candidate_id, side.value])[:24],
     )
     return SizingDecision(c.candidate_id, rd.risk_decision_id, SizingOutcome.ORDER,
                           f"{side.value} {qty} @ ref {p} (target value {target_value:.2f}, ceiling {ceiling})",

@@ -44,8 +44,8 @@ class ReconciliationOutcome(str, Enum):  # noqa: UP042
     CONSISTENT = "CONSISTENT"
     CONSISTENT_AFTER_SAFE_DUPLICATES = "CONSISTENT_AFTER_SAFE_DUPLICATES"
     RECONCILED_FROM_BROKER_EVIDENCE = "RECONCILED_FROM_BROKER_EVIDENCE"
-    MISMATCH_DETECTED = "MISMATCH_DETECTED"          # caller must record it -> execution halted
-    UNRESOLVED = "UNRESOLVED"                         # cannot be established -> execution halted
+    MISMATCH_DETECTED = "MISMATCH_DETECTED"  # caller must record it -> execution halted
+    UNRESOLVED = "UNRESOLVED"  # cannot be established -> execution halted
 
 
 @dataclass(frozen=True)
@@ -55,17 +55,23 @@ class Mismatch:
     expected: str
     actual: str
     detail: str = ""
-    unresolved: bool = False   # "cannot verify" is distinct from "verified different", never "verified equal"
+    unresolved: bool = (
+        False  # "cannot verify" is distinct from "verified different", never "verified equal"
+    )
 
     def __str__(self) -> str:
-        return f"{self.kind} [{self.subject}]: {self.expected} vs {self.actual} {self.detail}".strip()
+        return (
+            f"{self.kind} [{self.subject}]: {self.expected} vs {self.actual} {self.detail}".strip()
+        )
 
 
 @dataclass(frozen=True)
 class LedgerView:
     cash: Decimal
     positions: Mapping[str, int]
-    avg_costs: Mapping[str, Decimal] | None = None   # None = this source cannot supply average cost (UNKNOWN)
+    avg_costs: Mapping[str, Decimal] | None = (
+        None  # None = this source cannot supply average cost (UNKNOWN)
+    )
 
 
 @dataclass(frozen=True)
@@ -81,12 +87,21 @@ class ReconciliationResult:
 
     @property
     def consistent(self) -> bool:
-        return self.outcome in (ReconciliationOutcome.CONSISTENT, ReconciliationOutcome.CONSISTENT_AFTER_SAFE_DUPLICATES,
-                                ReconciliationOutcome.RECONCILED_FROM_BROKER_EVIDENCE)
+        return self.outcome in (
+            ReconciliationOutcome.CONSISTENT,
+            ReconciliationOutcome.CONSISTENT_AFTER_SAFE_DUPLICATES,
+            ReconciliationOutcome.RECONCILED_FROM_BROKER_EVIDENCE,
+        )
 
 
-def compare_cash_positions(a_cash: Decimal, a_pos: Mapping[str, int], b_cash: Decimal, b_pos: Mapping[str, int],
-                           a_label: str = "portfolio", b_label: str = "broker") -> list[str]:
+def compare_cash_positions(
+    a_cash: Decimal,
+    a_pos: Mapping[str, int],
+    b_cash: Decimal,
+    b_pos: Mapping[str, int],
+    a_label: str = "portfolio",
+    b_label: str = "broker",
+) -> list[str]:
     out: list[str] = []
     if a_cash != b_cash:
         out.append(f"cash: {a_label} {a_cash} != {b_label} {b_cash}")
@@ -97,11 +112,18 @@ def compare_cash_positions(a_cash: Decimal, a_pos: Mapping[str, int], b_cash: De
     return out
 
 
-def _implied(mgr: OrderLifecycleManager, opening: LedgerView) -> tuple[Decimal | None, dict[str, int], dict[str, Decimal | None]]:
+def _implied(
+    mgr: OrderLifecycleManager, opening: LedgerView
+) -> tuple[Decimal | None, dict[str, int], dict[str, Decimal | None]]:
     cash: Decimal | None = Decimal(opening.cash)
     pos = {k: int(v) for k, v in opening.positions.items()}
     basis: dict[str, Decimal | None] = {}
-    for i, q in pos.items():  # opening average cost unknown => implied average cost for that instrument is unknown
+    for (
+        i,
+        q,
+    ) in (
+        pos.items()
+    ):  # opening average cost unknown => implied average cost for that instrument is unknown
         a = None if opening.avg_costs is None else opening.avg_costs.get(i)
         basis[i] = None if a is None else Decimal(a) * Decimal(q)
     for r in mgr.records():
@@ -135,32 +157,89 @@ def _compare_fill(mm: list, r, f, rep) -> None:  # noqa: ANN001
     fid = f.fill_id
     bf = rep.fill
     if (f.quantity, f.price) != (int(bf.quantity), Decimal(str(bf.price))):
-        mm.append(Mismatch("FILL_CONTRADICTION", fid, f"{f.quantity}@{f.price}", f"{bf.quantity}@{bf.price}"))
-    if (bf.order_id, rep.idempotency_key, rep.risk_decision_id) != (r.order.order_id, r.key, r.request.risk_decision_id) \
-            or (f.order_id is not None and f.order_id != bf.order_id):
-        mm.append(Mismatch("FILL_PROVENANCE", fid, f"order {r.order.order_id} key {r.key}",
-                           f"order {bf.order_id} key {rep.idempotency_key}"))
+        mm.append(
+            Mismatch(
+                "FILL_CONTRADICTION", fid, f"{f.quantity}@{f.price}", f"{bf.quantity}@{bf.price}"
+            )
+        )
+    if (bf.order_id, rep.idempotency_key, rep.risk_decision_id) != (
+        r.order.order_id,
+        r.key,
+        r.request.risk_decision_id,
+    ) or (f.order_id is not None and f.order_id != bf.order_id):
+        mm.append(
+            Mismatch(
+                "FILL_PROVENANCE",
+                fid,
+                f"order {r.order.order_id} key {r.key}",
+                f"order {bf.order_id} key {rep.idempotency_key}",
+            )
+        )
     bc = getattr(rep, "charges", None)
     if bc is None:
-        mm.append(Mismatch("CHARGES_UNAVAILABLE_BROKER", fid, "broker charges", "absent", unresolved=True))
+        mm.append(
+            Mismatch("CHARGES_UNAVAILABLE_BROKER", fid, "broker charges", "absent", unresolved=True)
+        )
     if f.charges_total is None:
-        mm.append(Mismatch("CHARGES_UNAVAILABLE_LIFECYCLE", fid, "recorded charges", "absent", unresolved=True))
+        mm.append(
+            Mismatch(
+                "CHARGES_UNAVAILABLE_LIFECYCLE", fid, "recorded charges", "absent", unresolved=True
+            )
+        )
     if bc is None or f.charges_total is None:
         return  # never substitute zero or a recomputed (today's-schedule) value for missing broker evidence
     if Decimal(bc.total_cost) != f.charges_total:
-        mm.append(Mismatch("FILL_CHARGES", fid, f"lifecycle={f.charges_total}", f"broker={bc.total_cost}"))
+        mm.append(
+            Mismatch("FILL_CHARGES", fid, f"lifecycle={f.charges_total}", f"broker={bc.total_cost}")
+        )
     if f.schedule_version is None:
-        mm.append(Mismatch("SCHEDULE_VERSION_UNAVAILABLE", fid, "recorded schedule version", "absent", unresolved=True))
+        mm.append(
+            Mismatch(
+                "SCHEDULE_VERSION_UNAVAILABLE",
+                fid,
+                "recorded schedule version",
+                "absent",
+                unresolved=True,
+            )
+        )
     elif f.schedule_version != bc.schedule_version:
-        mm.append(Mismatch("FILL_SCHEDULE_VERSION", fid, f"lifecycle={f.schedule_version}", f"broker={bc.schedule_version}"))
+        mm.append(
+            Mismatch(
+                "FILL_SCHEDULE_VERSION",
+                fid,
+                f"lifecycle={f.schedule_version}",
+                f"broker={bc.schedule_version}",
+            )
+        )
     if f.charges_components is None:
-        mm.append(Mismatch("CHARGE_COMPONENTS_UNAVAILABLE", fid, "recorded components", "absent", unresolved=True))
+        mm.append(
+            Mismatch(
+                "CHARGE_COMPONENTS_UNAVAILABLE",
+                fid,
+                "recorded components",
+                "absent",
+                unresolved=True,
+            )
+        )
     else:
-        theirs = {"brokerage": bc.brokerage, "stt": bc.stt, "exchange_txn_charges": bc.exchange_txn_charges,
-                  "sebi_charges": bc.sebi_charges, "gst": bc.gst, "stamp_duty": bc.stamp_duty}
+        theirs = {
+            "brokerage": bc.brokerage,
+            "stt": bc.stt,
+            "exchange_txn_charges": bc.exchange_txn_charges,
+            "sebi_charges": bc.sebi_charges,
+            "gst": bc.gst,
+            "stamp_duty": bc.stamp_duty,
+        }
         for name, val in f.charges_components:
             if Decimal(val) != Decimal(theirs[name]):
-                mm.append(Mismatch("FILL_CHARGE_COMPONENT", f"{fid}:{name}", f"lifecycle={val}", f"broker={theirs[name]}"))
+                mm.append(
+                    Mismatch(
+                        "FILL_CHARGE_COMPONENT",
+                        f"{fid}:{name}",
+                        f"lifecycle={val}",
+                        f"broker={theirs[name]}",
+                    )
+                )
 
 
 def reconcile_execution(
@@ -192,23 +271,43 @@ def reconcile_execution(
             mm.append(Mismatch("ORDER_MISSING_AT_BROKER", subj, bid, "absent"))
             continue
         if st.filled_quantity != r.filled_qty:
-            mm.append(Mismatch("ORDER_FILLED_QTY", subj, str(r.filled_qty), str(st.filled_quantity)))
-        if r.order.state not in (OrderState.RECONCILIATION_REQUIRED,) and st.state is not r.order.state:
+            mm.append(
+                Mismatch("ORDER_FILLED_QTY", subj, str(r.filled_qty), str(st.filled_quantity))
+            )
+        if (
+            r.order.state not in (OrderState.RECONCILIATION_REQUIRED,)
+            and st.state is not r.order.state
+        ):
             mm.append(Mismatch("ORDER_STATE", subj, r.order.state.value, st.state.value))
         if not r.order.is_terminal() and st.remaining_quantity != r.quantity - r.filled_qty:
-            mm.append(Mismatch("OUTSTANDING_QTY", subj, str(r.quantity - r.filled_qty), str(st.remaining_quantity)))
+            mm.append(
+                Mismatch(
+                    "OUTSTANDING_QTY",
+                    subj,
+                    str(r.quantity - r.filled_qty),
+                    str(st.remaining_quantity),
+                )
+            )
     if broker_orders is not None:
         for bid in sorted(set(broker_orders) - known_broker_ids):
-            mm.append(Mismatch("UNKNOWN_BROKER_ORDER", bid, "known", "unknown to lifecycle", unresolved=True))
+            mm.append(
+                Mismatch(
+                    "UNKNOWN_BROKER_ORDER", bid, "known", "unknown to lifecycle", unresolved=True
+                )
+            )
 
     # ---- fills ------------------------------------------------------------
     ours = {f.fill_id: (r, f) for r in mgr.records() for f in r.applied_fills.values()}
-    quarantined = {f.fill_id for r in mgr.records() for _w, f in r.quarantined.values() if f is not None}
+    quarantined = {
+        f.fill_id for r in mgr.records() for _w, f in r.quarantined.values() if f is not None
+    }
     if broker_fills is not None:
         theirs = {rep.fill.fill_id: rep for rep in broker_fills}
         for fid in sorted(set(theirs) - set(ours)):
             tag = "QUARANTINED_FILL" if fid in quarantined else "FILL_MISSING_IN_LIFECYCLE"
-            mm.append(Mismatch(tag, fid, "accounted", "broker reports it", unresolved=fid in quarantined))
+            mm.append(
+                Mismatch(tag, fid, "accounted", "broker reports it", unresolved=fid in quarantined)
+            )
         for fid in sorted(set(ours) - set(theirs)):
             mm.append(Mismatch("FILL_NOT_AT_BROKER", fid, "broker holds it", "absent"))
         for fid in sorted(set(ours) & set(theirs)):
@@ -217,27 +316,50 @@ def reconcile_execution(
             _compare_fill(mm, r, f, rep)
     for ident_owner in mgr.records():
         for ident in ident_owner.quarantined:
-            if not any(m.kind == "QUARANTINED_FILL" for m in mm) and ident_owner.quarantined[ident][1] is None:
-                mm.append(Mismatch("QUARANTINED_EVENT", ident_owner.key, "none", ident, unresolved=True))
+            if (
+                not any(m.kind == "QUARANTINED_FILL" for m in mm)
+                and ident_owner.quarantined[ident][1] is None
+            ):
+                mm.append(
+                    Mismatch("QUARANTINED_EVENT", ident_owner.key, "none", ident, unresolved=True)
+                )
 
     # ---- positions & cash, three ways ---------------------------------------
-    for a_lab, a_pos, b_lab, b_pos in (("lifecycle-implied", ipos, "internal portfolio", internal.positions),
-                                       ("lifecycle-implied", ipos, "broker", broker.positions),
-                                       ("internal portfolio", internal.positions, "broker", broker.positions)):
+    for a_lab, a_pos, b_lab, b_pos in (
+        ("lifecycle-implied", ipos, "internal portfolio", internal.positions),
+        ("lifecycle-implied", ipos, "broker", broker.positions),
+        ("internal portfolio", internal.positions, "broker", broker.positions),
+    ):
         for i in sorted(set(a_pos) | set(b_pos)):
             if a_pos.get(i, 0) != b_pos.get(i, 0):
-                mm.append(Mismatch("POSITION", i, f"{a_lab}={a_pos.get(i, 0)}", f"{b_lab}={b_pos.get(i, 0)}"))
+                mm.append(
+                    Mismatch(
+                        "POSITION", i, f"{a_lab}={a_pos.get(i, 0)}", f"{b_lab}={b_pos.get(i, 0)}"
+                    )
+                )
     if icash is None:
-        mm.append(Mismatch("CASH_UNVERIFIABLE", "lifecycle", "charges known for every fill", "a fill has no charges",
-                           unresolved=True))
+        mm.append(
+            Mismatch(
+                "CASH_UNVERIFIABLE",
+                "lifecycle",
+                "charges known for every fill",
+                "a fill has no charges",
+                unresolved=True,
+            )
+        )
     else:
-        for a_lab, a, b_lab, b in (("lifecycle-implied", icash, "internal portfolio", internal.cash),
-                                   ("lifecycle-implied", icash, "broker", broker.cash),
-                                   ("internal portfolio", internal.cash, "broker", broker.cash)):
+        for a_lab, a, b_lab, b in (
+            ("lifecycle-implied", icash, "internal portfolio", internal.cash),
+            ("lifecycle-implied", icash, "broker", broker.cash),
+            ("internal portfolio", internal.cash, "broker", broker.cash),
+        ):
             if a != b:
                 mm.append(Mismatch("CASH", "cash", f"{a_lab}={a}", f"{b_lab}={b}"))
-    views = (("lifecycle-implied", ipos, iavg), ("internal portfolio", internal.positions, _avg_of(internal)),
-             ("broker", broker.positions, _avg_of(broker)))
+    views = (
+        ("lifecycle-implied", ipos, iavg),
+        ("internal portfolio", internal.positions, _avg_of(internal)),
+        ("broker", broker.positions, _avg_of(broker)),
+    )
     for inst in sorted({i for _l, p, _a in views for i in p}):
         known: list[tuple[str, Decimal]] = []
         for lab, p, a in views:
@@ -245,18 +367,42 @@ def reconcile_execution(
                 continue  # not held in this source: quantity mismatch (if any) is already reported above
             v = None if a is None else a.get(inst)
             if v is None:
-                mm.append(Mismatch("AVG_COST_UNAVAILABLE", inst, "average cost known", f"{lab} cannot supply it", unresolved=True))
+                mm.append(
+                    Mismatch(
+                        "AVG_COST_UNAVAILABLE",
+                        inst,
+                        "average cost known",
+                        f"{lab} cannot supply it",
+                        unresolved=True,
+                    )
+                )
             else:
                 known.append((lab, Decimal(v)))
         for k in range(len(known)):
             for j in range(k + 1, len(known)):
                 (la, va), (lb, vb) = known[k], known[j]
                 if abs(va - vb) > AVG_COST_TOLERANCE:
-                    mm.append(Mismatch("AVG_COST", inst, f"{la}={va}", f"{lb}={vb}", detail=f"(|diff|>{AVG_COST_TOLERANCE})"))
+                    mm.append(
+                        Mismatch(
+                            "AVG_COST",
+                            inst,
+                            f"{la}={va}",
+                            f"{lb}={vb}",
+                            detail=f"(|diff|>{AVG_COST_TOLERANCE})",
+                        )
+                    )
     pend = mgr.fills_pending_portfolio_application()
     for key, f in pend:
-        mm.append(Mismatch("PORTFOLIO_APPLICATION_PENDING", f.fill_id, "applied to portfolio", "not confirmed",
-                           detail=f"(order {key})", unresolved=True))
+        mm.append(
+            Mismatch(
+                "PORTFOLIO_APPLICATION_PENDING",
+                f.fill_id,
+                "applied to portfolio",
+                "not confirmed",
+                detail=f"(order {key})",
+                unresolved=True,
+            )
+        )
 
     # de-duplicate identical mismatches while keeping order
     seen, uniq = set(), []
@@ -265,24 +411,58 @@ def reconcile_execution(
         if k not in seen:
             seen.add(k)
             uniq.append(m)
-    dups = sum(1 for r in mgr.records() for e in r.event_log if e["status"] in ("DUPLICATE_IGNORED", "STALE_IGNORED"))
+    dups = sum(
+        1
+        for r in mgr.records()
+        for e in r.event_log
+        if e["status"] in ("DUPLICATE_IGNORED", "STALE_IGNORED")
+    )
     if not uniq:
-        out = ReconciliationOutcome.CONSISTENT_AFTER_SAFE_DUPLICATES if dups else ReconciliationOutcome.CONSISTENT
+        out = (
+            ReconciliationOutcome.CONSISTENT_AFTER_SAFE_DUPLICATES
+            if dups
+            else ReconciliationOutcome.CONSISTENT
+        )
     elif all(m.unresolved for m in uniq):
         out = ReconciliationOutcome.UNRESOLVED
     else:
         out = ReconciliationOutcome.MISMATCH_DETECTED
-    run_id = "recon_" + hash_json_stable([
-        str(opening.cash), sorted(opening.positions.items()), str(internal.cash), sorted(internal.positions.items()),
-        str(broker.cash), sorted(broker.positions.items()), sorted(ours), sorted(
-            (k, repr(v)) for k, v in ((broker_fills and {x.fill.fill_id: x.fill.quantity for x in broker_fills}) or {}).items()),
-        [str(m) for m in uniq], len(mgr.records()), len(pend)])[:24]
+    run_id = (
+        "recon_"
+        + hash_json_stable(
+            [
+                str(opening.cash),
+                sorted(opening.positions.items()),
+                str(internal.cash),
+                sorted(internal.positions.items()),
+                str(broker.cash),
+                sorted(broker.positions.items()),
+                sorted(ours),
+                sorted(
+                    (k, repr(v))
+                    for k, v in (
+                        (broker_fills and {x.fill.fill_id: x.fill.quantity for x in broker_fills})
+                        or {}
+                    ).items()
+                ),
+                [str(m) for m in uniq],
+                len(mgr.records()),
+                len(pend),
+            ]
+        )[:24]
+    )
     return ReconciliationResult(run_id, out, tuple(uniq), icash, ipos, dups, ())
 
 
-def reconcile_from_broker_evidence(mgr: OrderLifecycleManager, opening: LedgerView, internal: LedgerView,
-                                   broker: LedgerView, broker_orders, broker_fills: tuple,
-                                   book_evidence=None) -> ReconciliationResult:  # noqa: ANN001
+def reconcile_from_broker_evidence(
+    mgr: OrderLifecycleManager,
+    opening: LedgerView,
+    internal: LedgerView,
+    broker: LedgerView,
+    broker_orders,
+    broker_fills: tuple,
+    book_evidence=None,
+) -> ReconciliationResult:  # noqa: ANN001
     """Ingest broker-reported fills missing from the lifecycle (as ordinary events, with all the usual
     safeguards) and re-reconcile. Anything contradictory stays quarantined and halts.
 
@@ -297,13 +477,23 @@ def reconcile_from_broker_evidence(mgr: OrderLifecycleManager, opening: LedgerVi
     view = internal
     for fid in missing:
         rep = by_id[fid]
-        res = mgr.apply_event(BrokerEvent(EventKind.FILL, rep.broker_order_id, rep.idempotency_key,
-                                          fill=rep.fill, charges=rep.charges))
+        res = mgr.apply_event(
+            BrokerEvent(
+                EventKind.FILL,
+                rep.broker_order_id,
+                rep.idempotency_key,
+                fill=rep.fill,
+                charges=rep.charges,
+            )
+        )
         if res.fill_id == fid and res.status.value == "APPLIED" and book_evidence is not None:
             view = book_evidence(rep)
             mgr.mark_portfolio_applied(fid)
     second = reconcile_execution(mgr, opening, view, broker, broker_orders, broker_fills)
     if second.consistent:
-        return replace(second, outcome=ReconciliationOutcome.RECONCILED_FROM_BROKER_EVIDENCE,
-                       evidence_fill_ids=tuple(missing))
+        return replace(
+            second,
+            outcome=ReconciliationOutcome.RECONCILED_FROM_BROKER_EVIDENCE,
+            evidence_fill_ids=tuple(missing),
+        )
     return replace(second, evidence_fill_ids=tuple(missing))
