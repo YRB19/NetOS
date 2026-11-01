@@ -31,6 +31,7 @@ class TrialOutcome(str, Enum):  # noqa: UP042
     INVALID_CONFIGURATION = "INVALID_CONFIGURATION"
     REJECTED = "REJECTED"
     INTERRUPTED = "INTERRUPTED"
+    STARTED = "STARTED"  # write-ahead attempt-start event; never a terminal outcome
     UNSUPPORTED = "UNSUPPORTED"
     EXCLUDED_VALIDITY_FAILURE = "EXCLUDED_VALIDITY_FAILURE"
 
@@ -63,6 +64,11 @@ class TrialEntry:
     recorded_at: datetime
     prev_hash: str
     entry_hash: str
+    lifecycle: str | None = None  # "START" | "TERMINAL" | None (legacy single-event trial)
+    attempt_id: str | None = None  # groups the lifecycle events of ONE logical trial
+
+
+TERMINAL_OUTCOMES = frozenset(TrialOutcome) - {TrialOutcome.STARTED}
 
 
 class TrialLedger:
@@ -80,22 +86,59 @@ class TrialLedger:
         cost_schedule_version: str | None = None, reason: str | None = None,
         holdout_id: str | None = None, holdout_exposed: bool = False,
         holdout_reused: bool = False, artifact_refs: dict | None = None,
+        lifecycle: str | None = None, attempt_id: str | None = None,
     ) -> TrialEntry:  # fmt: skip
-        if outcome is not TrialOutcome.COMPLETED and outcome is not TrialOutcome.COMPLETED_WORSE_THAN_BASELINE and not reason:
+        if lifecycle not in (None, "START", "TERMINAL"):
+            raise TrialLedgerError("lifecycle must be START, TERMINAL or None")
+        if (lifecycle is None) != (attempt_id is None):
+            raise TrialLedgerError("lifecycle and attempt_id must be given together")
+        if (lifecycle == "START") != (outcome is TrialOutcome.STARTED):
+            raise TrialLedgerError("START events use outcome STARTED and only they do")
+        if lifecycle == "TERMINAL" and not any(
+            e.attempt_id == attempt_id and e.lifecycle == "START" for e in self.entries()
+        ):
+            raise TrialLedgerError(f"terminal event for unknown attempt {attempt_id!r}")
+        if lifecycle == "TERMINAL" and any(
+            e.attempt_id == attempt_id and e.lifecycle == "TERMINAL" for e in self.entries()
+        ):
+            raise TrialLedgerError(f"attempt {attempt_id!r} already has a terminal outcome")
+        if (
+            outcome
+            not in (
+                TrialOutcome.COMPLETED,
+                TrialOutcome.COMPLETED_WORSE_THAN_BASELINE,
+                TrialOutcome.STARTED,
+            )
+            and not reason
+        ):
             raise TrialLedgerError(f"outcome {outcome.value} requires a controlled reason")
         existing = self.entries()
         seq = len(existing) + 1
         prev = existing[-1].entry_hash if existing else GENESIS
         body = {
-            "sequence": seq, "protocol_id": protocol_id, "protocol_hash": protocol_hash,
-            "run_id": run_id, "parent_trial_id": parent_trial_id, "strategy_id": strategy_id,
-            "parameters": jsonable(parameters or {}), "dataset_hash": dataset_hash,
-            "window": window, "universe": universe,
-            "cost_schedule_version": cost_schedule_version, "mode": mode,
-            "outcome": outcome.value, "reason": reason, "holdout_id": holdout_id,
-            "holdout_exposed": holdout_exposed, "holdout_reused": holdout_reused,
-            "artifact_refs": jsonable(artifact_refs or {}), "prev_hash": prev,
+            "sequence": seq,
+            "protocol_id": protocol_id,
+            "protocol_hash": protocol_hash,
+            "run_id": run_id,
+            "parent_trial_id": parent_trial_id,
+            "strategy_id": strategy_id,
+            "parameters": jsonable(parameters or {}),
+            "dataset_hash": dataset_hash,
+            "window": window,
+            "universe": universe,
+            "cost_schedule_version": cost_schedule_version,
+            "mode": mode,
+            "outcome": outcome.value,
+            "reason": reason,
+            "holdout_id": holdout_id,
+            "holdout_exposed": holdout_exposed,
+            "holdout_reused": holdout_reused,
+            "artifact_refs": jsonable(artifact_refs or {}),
+            "prev_hash": prev,
         }
+        if lifecycle is not None:  # added only when used, so legacy line hashes are unchanged
+            body["lifecycle"] = lifecycle
+            body["attempt_id"] = attempt_id
         h = hash_json_stable(body)
         trial_id = f"trial_{seq:06d}_{h[:12]}"
         at = ensure_utc(self._clock())
@@ -120,7 +163,7 @@ class TrialLedger:
             holdout_id=d["holdout_id"], holdout_exposed=d["holdout_exposed"],
             holdout_reused=d["holdout_reused"], artifact_refs=d["artifact_refs"],
             recorded_at=datetime.fromisoformat(d["recorded_at"]), prev_hash=d["prev_hash"],
-            entry_hash=d["entry_hash"],
+            entry_hash=d["entry_hash"], lifecycle=d.get("lifecycle"), attempt_id=d.get("attempt_id"),
         )  # fmt: skip
 
     def entries(self) -> list[TrialEntry]:
@@ -146,9 +189,13 @@ class TrialLedger:
             if not ln.strip():
                 continue
             d = json.loads(ln)
-            body = {k: v for k, v in d.items() if k not in ("trial_id", "recorded_at", "entry_hash")}
+            body = {
+                k: v for k, v in d.items() if k not in ("trial_id", "recorded_at", "entry_hash")
+            }
             if d["sequence"] != i:
-                problems.append(f"line {i}: sequence {d['sequence']} (an entry was removed/reordered)")
+                problems.append(
+                    f"line {i}: sequence {d['sequence']} (an entry was removed/reordered)"
+                )
             if d["prev_hash"] != prev:
                 problems.append(f"line {i}: prev_hash mismatch (chain broken)")
             if hash_json_stable(body) != d["entry_hash"]:
@@ -156,9 +203,53 @@ class TrialLedger:
             prev = d["entry_hash"]
         return problems
 
+    # ---------------------------------------------------------- logical trials
+    def logical_trials(self, *, protocol_id: str | None = None) -> list[TrialEntry]:
+        """One entry per LOGICAL trial: the latest lifecycle event of each attempt, plus every
+        legacy single-event entry. Denominator for all reported trial counts (see docs)."""
+        latest: dict[str, TrialEntry] = {}
+        out: list[TrialEntry] = []
+        order: list[str] = []
+        for e in self.entries():
+            if protocol_id is not None and e.protocol_id != protocol_id:
+                continue
+            if e.attempt_id is None:
+                out.append(e)
+            else:
+                if e.attempt_id not in latest:
+                    order.append(e.attempt_id)
+                latest[e.attempt_id] = e
+        return sorted(out + [latest[a] for a in order], key=lambda e: e.sequence)
+
+    def unresolved(self, *, protocol_id: str | None = None) -> list[TrialEntry]:
+        """Attempts whose latest event is STARTED: crashed/interrupted/unfinished."""
+        return [
+            e
+            for e in self.logical_trials(protocol_id=protocol_id)
+            if e.outcome is TrialOutcome.STARTED
+        ]
+
+    def recover_unresolved(self, reason: str) -> list[TrialEntry]:
+        """Classify every unfinished attempt as INTERRUPTED. Never fabricates results."""
+        out = []
+        for e in self.unresolved():
+            out.append(self.record(
+                protocol_id=e.protocol_id, protocol_hash=e.protocol_hash, strategy_id=e.strategy_id,
+                mode=e.mode, outcome=TrialOutcome.INTERRUPTED, reason=reason, lifecycle="TERMINAL",
+                attempt_id=e.attempt_id, parameters=e.parameters, holdout_id=e.holdout_id,
+                holdout_exposed=e.holdout_exposed,
+            ))  # fmt: skip
+        return out
+
+    def event_count(self) -> int:
+        return len(self.entries())
+
     def count(self, *, protocol_id: str | None = None, strategy_id: str | None = None,
               mode: str | None = None) -> int:  # fmt: skip
-        return len(self.select(protocol_id=protocol_id, strategy_id=strategy_id, mode=mode))
+        """Number of LOGICAL trials (not lifecycle events)."""
+        return len([e for e in self.logical_trials(protocol_id=protocol_id)
+                    if (strategy_id is None or e.strategy_id == strategy_id)
+                    and (mode is None or e.mode == mode)])  # fmt: skip
 
     def select(self, *, protocol_id: str | None = None, strategy_id: str | None = None,
                mode: str | None = None, outcome: TrialOutcome | None = None) -> list[TrialEntry]:  # fmt: skip
