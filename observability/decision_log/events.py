@@ -56,6 +56,7 @@ class EventType(str, Enum):  # noqa: UP042
     INPUT_SNAPSHOT_LINKED = "INPUT_SNAPSHOT_LINKED"
     CANDIDATE_EMITTED = "CANDIDATE_EMITTED"
     CANDIDATE_REJECTED = "CANDIDATE_REJECTED"
+    AI_SIGNAL_EVALUATED = "AI_SIGNAL_EVALUATED"  # Slice 11: additive AI research-signal provenance
     RISK_EVALUATED = "RISK_EVALUATED"
     SIZING_EVALUATED = "SIZING_EVALUATED"
     ORDER_INTENT = "ORDER_INTENT"  # written BEFORE the broker is called
@@ -80,6 +81,9 @@ PAYLOAD_REQUIRED_KEYS: dict[EventType, frozenset[str]] = {
         {"candidate_id", "action", "rationale", "strategy_version_id"}
     ),
     EventType.CANDIDATE_REJECTED: frozenset({"reason", "error_code"}),
+    EventType.AI_SIGNAL_EVALUATED: frozenset(
+        {"candidate_id", "applied", "outcome_reason", "model_version_id", "label"}
+    ),
     EventType.RISK_EVALUATED: frozenset(
         {"risk_decision_id", "verdict", "risk_rule_version_id", "checks"}
     ),
