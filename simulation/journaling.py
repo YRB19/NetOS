@@ -116,6 +116,18 @@ class RunJournal:
             "input_snapshot_id": c.input_snapshot_id, "candidate_timestamp": c.timestamp,
         }, did=did, at=t)  # fmt: skip
 
+    def ai_signal(self, did: str, c, prov: dict, t: datetime) -> None:  # noqa: ANN001
+        """Slice 11: additive provenance of the optional AI research signal for this exact candidate."""
+        sig = prov.get("signal") or {}
+        self._e(EventType.AI_SIGNAL_EVALUATED, {
+            "candidate_id": c.candidate_id, "applied": bool(prov.get("applied")),
+            "outcome_reason": prov.get("outcome_reason"), "model_version_id": prov.get("model_version_id"),
+            "label": prov.get("label", "RESEARCH SIGNAL ONLY"),
+            "provider_status": sig.get("provider_status", "NO_SIGNAL_RECORD"), **{
+                k: v for k, v in prov.items() if k not in {"signal", "applied", "outcome_reason", "model_version_id", "label"}},
+            "signal": sig or None,
+        }, did=did, key="ai", at=t)  # fmt: skip
+
     def risk(self, did: str, rd, t: datetime) -> None:  # noqa: ANN001
         checks = [{"check_id": k.check_id, "passed": k.passed, "evaluable": k.evaluable, "detail": k.detail,
                    "evidence": dict(k.evidence), "outcome": "PASS" if k.passed else ("FAIL" if k.evaluable else "NOT_EVALUABLE")}

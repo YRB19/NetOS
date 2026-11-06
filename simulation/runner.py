@@ -382,6 +382,13 @@ class PipelineHarness(ResearchHarness):
                     run_id, t, cand.instrument_id, cand.candidate_id, snap, pf_before, sv, uv
                 )
                 rj.candidate(did, cand, t)
+                _prov = getattr(
+                    strategy, "provenance_for", None
+                )  # Slice 11: optional AI provenance hook
+                if callable(_prov):
+                    _p = _prov(cand)
+                    if _p:
+                        rj.ai_signal(did, cand, _p, t)
 
                 def _no_order(state, why, _c=cand, _s=snap, _d=did, **kw) -> None:  # noqa: ANN001
                     rj.finalize(_d, rj.no_order_record(state, t, _c.instrument_id, _s, _c, risk_version_id, cfg_id,
