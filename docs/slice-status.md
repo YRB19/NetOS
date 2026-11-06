@@ -130,3 +130,10 @@ Passing UI tests does not prove profitability, broker compatibility or live read
 ## Slice 10 visual redesign - Autonomous Trading Command Centre (2026-10-31)
 Frontend-only pass. New landing command centre (KPI row, role tiles, intake, activity stream, 8-stage agent core, capital/portfolio workspace, session summary) and dark theme across all pages; navigation regrouped into six areas.
 Backend, API, CSP, risk rules, strategy and storage untouched; no Slice 11 work; no Claude runtime. Tests: 913 Python unittest pass; 39 frontend node:test pass (28 original + 11 new); 64 real-browser checks pass (1440/768/360); import-graph 0 violations; compileall clean. See `docs/operator-console.md` section 9.
+
+
+## Slice 11 — AI Candidate-Signal Research Adapter v1 (2026-11-06)
+**Status: COMPLETE for the Slice 11 brief on synthetic infrastructure; real-provider and real-disclosure smoke tests NOT performed (no credentials/documents supplied).** Optional, disableable disclosure-classification overlay on Tier-2: point-in-time disclosure store/context (Plane 1), strict typed output, offline stub + optional Anthropic adapter (`model_providers/`, ADR-22), deterministic bounded confidence adjustment, ModelVersion with mandatory cutoff (fail-closed), model-cutoff contamination check, additive `AI_SIGNAL_EVALUATED` journal event, read-only console panel. Details: `docs/ai-disclosure-signal.md`.
+**Tests:** 913 -> 993 unittest (+80); 39 -> 43 frontend `node:test`. Browser checks and pytest/ruff/mypy not run here (unavailable). Both import-graph checkers 0 violations; compileall clean. No existing test modified or removed.
+**Limits:** `confidence` is not consumed by sizing/risk, so the overlay does not change simulated outcomes; no alpha claim; no real disclosure source connected (`NOT_CONNECTED`); default adjustment parameters are untuned placeholders; bhavcopy adapter still validated only on fixtures.
+**Roadmap:** Governance & Promotion prerequisites folded into Slice 13 (`docs/slice-13-governance-adjustment.md`); the post-Slice-7 roadmap file was still not supplied. Not started: Slice 12, Slice 13.

@@ -88,3 +88,7 @@ checkpoints are separate (not a joint atomic commit); `data_available_at` and th
 in every path (recorded as unknown); unrealised P&L is not given at the settlement stage; the simulated broker and portfolio
 share one cost calculation, so booking consistency is shown, not statutory-rate correctness; ADR-11 awaits operator
 ratification; the roadmap file was not in the workspace. pytest/ruff/mypy are not installed here.
+
+
+## 8. Slice 11 addition — `AI_SIGNAL_EVALUATED` (additive)
+Emitted once per candidate whose strategy exposes `provenance_for(candidate)` (only the AI overlay does). Required keys: `candidate_id, applied, outcome_reason, model_version_id, label`; the payload also carries the full signal record and adjustment provenance (see `docs/ai-disclosure-signal.md` §8). Runs without the overlay contain no such events and are otherwise byte-for-byte unchanged in their economic outcome. Token-usage fields are stored as `usage_input_units`/`usage_output_units` because the redactor masks any key containing "token". No credential or header is ever recorded.

@@ -131,3 +131,7 @@ Unknown values render `Unavailable`/`Unknown`, never 0. Stage status comes from 
 unless a model version is recorded; execution is never "executed" without a recorded fill; settlement needs a settlement event. Confidence appears only if recorded. No chain-of-thought is shown.
 Allocation is cost basis plus cash (not market value). Currency is not recorded and is not assumed. Animations: one-shot draw-in of recorded arcs/equity line only, disabled by `prefers-reduced-motion`; no timers or random values.
 The only buttons are display-only stream filters; stage selection is client-side show/hide. No API call other than GET.
+
+
+## 10. Slice 11 — AI research-signal panel (read-only)
+`GET /api/runs/{id}/ai-signals` summarises persisted `AI_SIGNAL_EVALUATED` events (provider, models, versions, status counts, adjustments, usage, cost only if a verified price was configured). The command-centre run page renders it with a `RESEARCH SIGNAL ONLY` label. No AI events => `AI-DISABLED`, provider `DISABLED`, disclosure source `NOT_CONNECTED`. Stub runs say "no real model was called". The panel has no controls and no secret material; there is no animated "thinking" state.

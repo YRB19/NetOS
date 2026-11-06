@@ -189,3 +189,12 @@ by redaction (normalisation now strips enums at every depth); reconciliation-req
 **Found/fixed during build:** order grouping initially created a spurious empty order slot from uncorrelated broker events (replaced by alias-resolved slots; test asserts exact order counts); real-browser run found (1) horizontal overflow at 360px from unbreakable run IDs in headings (CSS `overflow-wrap`) and (2) auto-focus of `<main>` on first load preempting the skip link (focus now moves only on navigation); `/api` output now also scrubs absolute filesystem paths.
 **Tests:** +51 Python (read-only property by tree-hash before/after crawling every endpoint and after every mutating method; traversal; corrupt/tampered/truncated/garbage journals; exports; secrets; loopback), 28 node, 64 browser checks. 913 unittest pass. No Slice 11/13 work. Notion not attempted; Markdown is the record.
 
+
+
+## 2026-11-06 - Slice 11: AI Candidate-Signal Research Adapter v1 (ADR-22, ADR-23)
+**Baseline (uploaded NetOS_3.zip; git present, HEAD 7c495da, working tree carried the Slice 10 redesign/earlier changes uncommitted - nothing committed by this session):** 913 unittest OK, 39 frontend node tests OK, import-graph 0 violations (system Python 3.12; the bundled `.venv` is Python 3.14 and was not used). pytest/ruff/mypy and a browser were unavailable.
+**Inspected:** strategy interface, Tier-2, CandidateTrade, FeatureSnapshot, versions, contamination guards, journal events/recorder/redaction, runner, console API/frontend. Roadmap file absent.
+**Decisions:** FeatureSnapshot left unchanged; context paired by id (ADR-23). Network-capable provider placed in new leaf `model_providers/` because an existing Slice 6 test forbids network modules inside `intelligence/` (ADR-22; that test was not weakened). Run-facing `strategy_version_id` of the overlay stays the baseline id (pipeline requires candidate/run equality); overlay identity journaled separately. `ModelVersion` default identity left unchanged; explicit id used.
+**Found during build:** the journal redactor masks keys containing "token" (usage fields renamed `usage_*_units`); journal payload numbers are persisted as strings (read model coerces).
+**Added:** see `docs/ai-disclosure-signal.md` §2. **Tests:** +80 (disclosures 17, AI component 33, pipeline integration 15, console 6, boundaries 9) + 4 frontend.
+**Not done:** real disclosure ingestion, live Anthropic call, Slice 12, Slice 13 governance.
