@@ -64,6 +64,8 @@ def route(store: ArtifactStore, path: str, q: dict):
             return "json", R.risk(store, rid, unv)
         if tail == ["integrity"]:
             return "json", R.run_integrity(store, rid)
+        if tail == ["ai-signals"]:
+            return "json", R.ai_signals(store, rid, unv)
         if tail == ["equity"]:
             return "json", R.equity(store, rid)
     if seg[:2] == ["research", "reports"]:

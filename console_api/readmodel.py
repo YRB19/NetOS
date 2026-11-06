@@ -1071,3 +1071,93 @@ def _count(it) -> dict:
     for x in it:
         d[x] += 1
     return dict(d)
+
+
+def _num(v):
+    if v is None or v == "" or v == "None":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def ai_signals(store, run_id, allow_unverified: bool = False) -> dict:
+    """Slice 11: read-only summary of the AI research-signal events recorded in this run's journal.
+
+    Derived ONLY from persisted AI_SIGNAL_EVALUATED events. If none exist the panel reports AI as not
+    used for this run (an AI-DISABLED run) - nothing is invented, no provider is contacted.
+    """
+    lj = store.verified_reader(run_id, allow_unverified=allow_unverified)
+    evs = [e for e in lj.reader.events() if e.event_type is ET.AI_SIGNAL_EVALUATED]
+    base = {"run_id": run_id, "label": "RESEARCH SIGNAL ONLY", "read_only": True}
+    if not evs:
+        return {**base, "ai_used": False, "run_label": "AI-DISABLED",
+                "provider": "DISABLED", "disclosure_source": "NOT_CONNECTED",
+                "reason": "no AI_SIGNAL_EVALUATED events in this run's journal"}  # fmt: skip
+    status_counts: dict = {}
+    applied = 0
+    tokens_in = tokens_out = 0
+    tokens_known = False
+    cost = 0.0
+    cost_known = False
+    models, model_versions, prompts, schemas, providers, adjustments = (
+        set(),
+        set(),
+        set(),
+        set(),
+        set(),
+        set(),
+    )
+    rows = []
+    for e in evs:
+        p = e.payload
+        sig = p.get("signal") or {}
+        st = sig.get("provider_status") or p.get("provider_status") or "NO_SIGNAL_RECORD"
+        status_counts[st] = status_counts.get(st, 0) + 1
+        applied += 1 if p.get("applied") else 0
+        # Journal payloads persist numbers as strings; coerce defensively and never invent a value.
+        ti, to, co = (
+            _num(sig.get("usage_input_units")),
+            _num(sig.get("usage_output_units")),
+            _num(sig.get("estimated_cost_usd")),
+        )
+        if ti is not None:
+            tokens_in += int(ti)
+            tokens_known = True
+        if to is not None:
+            tokens_out += int(to)
+            tokens_known = True
+        if co is not None:
+            cost += co
+            cost_known = True
+        for bucket, key in ((models, "model_identifier"), (prompts, "prompt_hash"),
+                            (schemas, "output_schema_version"), (providers, "provider_name")):  # fmt: skip
+            if sig.get(key):
+                bucket.add(sig[key])
+        if p.get("model_version_id"):
+            model_versions.add(p["model_version_id"])
+        if p.get("adjustment_version"):
+            adjustments.add(p["adjustment_version"])
+        interp = sig.get("interpretation") or {}
+        rows.append({
+            "decision_id": e.decision_id, "candidate_id": p.get("candidate_id"), "instrument_id": sig.get("instrument_id"),
+            "provider_status": st, "applied": bool(p.get("applied")), "outcome_reason": p.get("outcome_reason"),
+            "status": interp.get("status"), "sentiment": interp.get("sentiment"), "materiality": interp.get("materiality"),
+            "confidence_adjustment": interp.get("confidence_adjustment"),
+            "original_confidence": p.get("original_confidence"), "adjusted_confidence": p.get("adjusted_confidence"),
+            "document_ids": sig.get("document_ids") or [], "detail": sig.get("detail"),
+        })  # fmt: skip
+    real = bool(providers - {"STUB", "NONE"})
+    return {
+        **base, "ai_used": True, "run_label": "AI-ENABLED",
+        "provider": "REAL_PROVIDER_RECORDED" if real else "STUB_OR_OFFLINE (no real model was called)",
+        "provider_names": sorted(providers), "models": sorted(models), "model_versions": sorted(model_versions),
+        "prompt_hashes": sorted(prompts), "output_schema_versions": sorted(schemas),
+        "adjustment_versions": sorted(adjustments), "events": len(evs), "adjusted_confidence_events": applied,
+        "status_counts": status_counts,
+        "no_signal_or_unknown": sum(n for k, n in status_counts.items() if k != "OK"),
+        "tokens": {"input": tokens_in, "output": tokens_out} if tokens_known else None,
+        "estimated_cost_usd": cost if cost_known else None,
+        "disclosure_source": "RECORDED_IN_JOURNAL", "rows": rows[:200],
+    }  # fmt: skip

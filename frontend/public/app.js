@@ -32,11 +32,11 @@ export function createApp({ root, api, setTitle = () => {} }) {
         // Auxiliary reads are best-effort: a failure shows "Unavailable" in that panel instead of failing the page.
         const settle = async (p) => { try { return await p; } catch { return null; } };
         const q = encodeURIComponent(run);
-        const [orders, recon] = await Promise.all([settle(api.get(`/runs/${q}/orders`, unvq)), settle(api.get(`/runs/${q}/reconciliation`, unvq))]);
+        const [orders, recon, ai] = await Promise.all([settle(api.get(`/runs/${q}/orders`, unvq)), settle(api.get(`/runs/${q}/reconciliation`, unvq)), settle(api.get(`/runs/${q}/ai-signals`, unvq))]);
         const decisionId = CC.pickDecision({ ov: ovr, orders, requested: params.decision });
         const detail = decisionId ? await settle(api.get(`/runs/${q}/decisions/${encodeURIComponent(decisionId)}`, unvq)) : null;
         return { title: "Command centre", cur: "/", run, env: CC.envChips({ ov: ovr, detail }),
-          content: CC.commandCentre({ ov: ovr, runs, health: healthCache, aux: { orders, recon, detail, decisionId, runId: run }, selectedStage: params.stage }) };
+          content: CC.commandCentre({ ov: ovr, runs, health: healthCache, aux: { orders, recon, ai, detail, decisionId, runId: run }, selectedStage: params.stage }) };
       }
       case "/runs": {
         const q = { ...params }; delete q.offset;

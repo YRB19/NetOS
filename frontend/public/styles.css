@@ -158,3 +158,8 @@ table.compact{font-size:.78rem}
 h1,h2,h3,h4,p,li,dd,summary,a,.badge,.banner{overflow-wrap:anywhere}
 .cc-title small{max-width:100%}
 code,td,.kv dd{overflow-wrap:anywhere;word-break:break-word}code{word-break:break-all}
+
+/* Slice 11: AI research-signal panel (read-only, recorded facts only) */
+.ai-panel { margin: 1rem 0; }
+.ai-panel .badge { border: 1px solid currentColor; padding: 0 .4rem; border-radius: 3px; font-size: .7rem; letter-spacing: .05em; }
+.ai-panel .chips { display: flex; flex-wrap: wrap; gap: .5rem; list-style: none; padding: 0; }

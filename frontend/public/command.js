@@ -374,8 +374,25 @@ ${k("JOURNAL EVENTS", integ.event_count != null ? esc(integ.event_count) : U)}${
 }
 
 /** Build the whole command-centre page body. All inputs come from the read-only API; auxiliary inputs may be null. */
+/** Slice 11: read-only AI research-signal status. Shows only recorded facts; never an animated "thinking" state. */
+export function aiPanel(ai) {
+  if (!ai) return `<section class="panel ai-panel" aria-label="AI research signal"><h3>AI research signal <small class="badge">RESEARCH SIGNAL ONLY</small></h3><p class="state">Unavailable: the AI signal summary could not be read.</p></section>`;
+  if (!ai.ai_used) return `<section class="panel ai-panel" aria-label="AI research signal"><h3>AI research signal <small class="badge">RESEARCH SIGNAL ONLY</small></h3><p><strong>${esc(ai.run_label)}</strong> \u00b7 provider ${esc(ai.provider)} \u00b7 disclosure source ${esc(ai.disclosure_source)}.</p><p class="state">${esc(ai.reason || "No AI signal was recorded for this run.")}</p></section>`;
+  const sc = Object.entries(ai.status_counts || {}).map(([k, n]) => `<li>${esc(k)}: <strong>${esc(n)}</strong></li>`).join("");
+  const tok = ai.tokens ? `${esc(ai.tokens.input)} in / ${esc(ai.tokens.output)} out` : "not reported";
+  const cost = ai.estimated_cost_usd === null || ai.estimated_cost_usd === undefined ? "not computed (no verified pricing configured)" : `USD ${esc(ai.estimated_cost_usd)}`;
+  const rows = (ai.rows || []).slice(0, 12).map((r) => `<tr><td><code>${esc(short(r.instrument_id || "", 18))}</code></td><td>${esc(r.provider_status)}</td><td>${esc(r.sentiment || "\u2014")}</td><td>${esc(r.materiality || "\u2014")}</td><td>${r.applied ? `${esc(r.original_confidence)} \u2192 ${esc(r.adjusted_confidence)}` : esc(r.outcome_reason || "no change")}</td></tr>`).join("");
+  return `<section class="panel ai-panel" aria-label="AI research signal"><h3>AI research signal <small class="badge">RESEARCH SIGNAL ONLY</small></h3>
+<p><strong>${esc(ai.run_label)}</strong> \u00b7 provider: ${esc(ai.provider)} \u00b7 models: ${esc((ai.models || []).join(", ") || "\u2014")}</p>
+<p>Model version ${esc((ai.model_versions || []).join(", ") || "\u2014")} \u00b7 prompt ${esc((ai.prompt_hashes || []).map((h) => short(h, 10)).join(", ") || "\u2014")} \u00b7 schema ${esc((ai.output_schema_versions || []).join(", ") || "\u2014")}</p>
+<p>${esc(ai.events)} signal events \u00b7 ${esc(ai.adjusted_confidence_events)} confidence adjustments \u00b7 ${esc(ai.no_signal_or_unknown)} no-signal/unknown/failed \u00b7 tokens ${tok} \u00b7 cost ${cost}</p>
+<ul class="chips">${sc}</ul>
+<table class="grid"><thead><tr><th>Instrument</th><th>Status</th><th>Sentiment</th><th>Materiality</th><th>Confidence</th></tr></thead><tbody>${rows}</tbody></table>
+<p class="state">The AI may adjust only the confidence field. It cannot change BUY/SELL/HOLD, size, risk or orders.</p></section>`;
+}
+
 export function commandCentre({ ov, runs, health, aux = {}, selectedStage = null }) {
-  const { orders = null, recon = null, detail = null, decisionId = null, runId = ov.run.run_id } = aux;
+  const { orders = null, recon = null, ai = null, detail = null, decisionId = null, runId = ov.run.run_id } = aux;
   const order = orders && decisionId ? (orders.items || []).find((o) => (o.decision_ids || []).includes(decisionId)) || null : null;
   const stages = deriveStages({ ov, detail, order });
   const reached = [...stages].reverse().find((s) => REACHED.has(s.status));
@@ -394,6 +411,7 @@ ${kpis({ ov, orders, recon, tiles })}
 <div class="cc-grid"><div class="cc-left">${intake({ ov, detail })}${stream({ rows, title, sourceNote: note })}</div>
 <div class="cc-right">${agentCore({ ov, stages, selected, detail, order, runId, decisionId, switcher })}${portfolio({ ov, orders })}</div></div>
 ${summary({ ov, orders, recon, rows })}
+${aiPanel(ai)}
 <details class="panel legacy"><summary>Full run overview, versions and provenance <small>unchanged read-only detail</small></summary>${overviewDetail({ ov })}</details>`;
 }
 
