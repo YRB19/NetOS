@@ -68,6 +68,7 @@ KNOWN_TOP_LEVEL_PACKAGES = frozenset(
         "shared",
         "simulation",
         "console_api",
+        "model_providers",
     }
 )
 

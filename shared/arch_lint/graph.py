@@ -35,6 +35,7 @@ FIRST_PARTY_TOP_LEVEL = {
     "governance",
     "simulation",
     "console_api",
+    "model_providers",
 }
 
 

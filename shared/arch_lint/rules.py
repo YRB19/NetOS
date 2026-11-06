@@ -300,3 +300,47 @@ _SLICE10_RULES: tuple[ForbiddenImportRule, ...] = tuple(
     )
 )
 RULES = RULES + _SLICE10_RULES
+
+
+# ---------------------------------------------------------------------------
+# Slice 11 additions — network-capable model providers (ADR-22)
+# ---------------------------------------------------------------------------
+# `model_providers` is the ONLY package allowed to open a network connection to an LLM API. It is a
+# leaf: no plane may import it (it is wired by an explicit composition script), and it may consume
+# only the provider/prompt *types* of `intelligence.llm_component`. It holds no broker/risk/governance
+# access. The Slice 6 invariant "no network modules inside intelligence/" is therefore preserved.
+_S11 = "Slice 11 / ADR-22: "
+_SLICE11_RULES: tuple[ForbiddenImportRule, ...] = tuple(
+    ForbiddenImportRule(
+        src, "model_providers", _S11 + "model providers are a leaf; compose explicitly"
+    )
+    for src in (
+        "domain",
+        "data",
+        "intelligence",
+        "risk_execution",
+        "observability",
+        "research",
+        "shared",
+        "governance",
+        "simulation",
+        "console_api",
+    )  # fmt: skip
+) + tuple(
+    ForbiddenImportRule(
+        "model_providers", target, _S11 + "providers hold no execution/risk/governance/data access"
+    )
+    for target in (
+        "risk_execution",
+        "governance",
+        "research",
+        "data",
+        "observability",
+        "simulation",
+        "console_api",
+        "intelligence.baseline",
+        "intelligence.llm_component.signals",
+        "intelligence.llm_component.overlay",
+    )  # fmt: skip
+)
+RULES = RULES + _SLICE11_RULES
