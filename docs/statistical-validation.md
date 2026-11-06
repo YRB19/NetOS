@@ -113,3 +113,7 @@ INFRASTRUCTURE_ONLY, CONFIRMATORY_CHECKS_PASSED. `criterion_outcome` (CRITERIA_M
 `criterion_outcome_admissible_as_evidence` only when validity passed. `evidence_class` and `profitability_claim` (always NONE) are separate. `CONFIRMATORY_CHECKS_PASSED` does **not** mean
 useful returns or that criteria were met. The legacy `build_report` records caller-supplied values as `LEGACY_UNVERIFIED` and can never grant confirmatory status.
 Reports are stored per attempt: `validity/<run_id>/report-<attempt_id>.json`.
+
+
+## Slice 11 note — model knowledge cutoff (ER-3)
+`research/contamination/model_cutoff.py` classifies an evaluation as `EXPLORATORY_ONLY` when the test window starts on/before the model's declared knowledge cutoff, and `enforce_confirmatory` raises `CONTAMINATION`. An unknown cutoff is the sentinel `9999-12-31` and always fails closed. No cutoff date has been established for any real model. Any AI-enabled run is a research signal; no run in this repository shows that it improves risk-adjusted return (that is Slice 12's question).

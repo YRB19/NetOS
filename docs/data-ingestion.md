@@ -168,3 +168,7 @@ byte-identical JSONL output
    Slice 2 needed (see `docs/slice-status.md`), not the full Stage 3 §2 domain model — the
    remaining ~17 domain objects (CandidateTrade, RiskDecision, Order, DecisionRecord, etc.)
    do not yet exist in this repository.
+
+
+## Slice 11 addendum — disclosure ingestion (separate from the price pipeline)
+Official-announcement documents enter via `data/adapters/disclosure_local_import.py` (operator-supplied JSON/JSONL; no network; no verified online source; real-time feed `NOT_CONNECTED`). See `docs/ai-disclosure-signal.md` §3 for the contract and point-in-time rule. This does not validate the price-history pipeline: the NSE bhavcopy adapter is still validated only against hand-authored fixtures.
