@@ -64,3 +64,30 @@ Not implemented here. See `docs/slice-13-governance-adjustment.md`.
 - Confidence is not consumed by sizing/risk, so the overlay cannot alter simulated P&L today.
 - Default adjustment parameters are placeholders.
 - Cutoff for any real model is operator-supplied and unverified by NetOS.
+
+
+---
+# Acceptance closure (2026-11-07) and NVIDIA provider
+
+## A. Exact FeatureSnapshot provenance
+`adjust_candidate` now requires `SignalRecord.input_snapshot_id == CandidateTrade.input_snapshot_id`. Absent on either side => `SNAPSHOT_REFERENCE_MISSING`; different => `SNAPSHOT_REFERENCE_MISMATCH`. In both cases the **original candidate object is returned unchanged** and the reason is journaled (`outcome_reason`). A snapshot is never inferred from instrument + timestamp. `SignalStore` still looks up by (instrument, timestamp); the overlay's check is the enforcement point (tested with two candidates sharing instrument and timestamp but different snapshots).
+
+## B. Model-cutoff contamination is in the enforced evaluation path
+`ResearchEvaluationService.evaluate(..., model_version=None, model_provenance=None)` now detects an AI-enabled strategy (it exposes `model_version`, `provenance_for`, or the caller supplies model metadata) and calls `research.contamination.model_cutoff.assess_ai_model`. The evaluation is `EXPLORATORY_ONLY` (added to the existing downgrade reasons, prefixed `AI_MODEL:`) when: the ModelVersion is unlinked; provenance is missing, for a different ModelVersion, or inconsistent with `knowledge_cutoff`; the cutoff basis is UNKNOWN/undeclared or lacks a date or source note; or the test window starts on/before the cutoff. Persisted in the report under `ai_model_provenance`: model version id, backbone identifier, cutoff basis, cutoff date, cutoff source note, ModelVersion cutoff, test start, evaluation class and reasons. Non-AI evaluations skip all of this: their reports contain no such key and their validity semantics are unchanged (all Slice 9 tests pass unmodified). No cutoff date is invented; the synthetic dates in tests are labelled SYNTHETIC.
+Limitation: the declaration (`CutoffDeclaration`) is operator-supplied and its truth is not verified by NetOS.
+
+## C. Prompt serialization hardening (`disclosure_classification_prompt_v2`)
+Document text, titles, ids, the instrument id and the timestamp are HTML/XML-escaped (`& < > " '`) and control characters are dropped before rendering; truncation (4000 chars/document, 120 chars/title) is applied to the raw text first. A source document therefore cannot emit a raw `</document>`, open a new element, or forge a system/developer block (tested with closing delimiters, fake system/developer text, tags, JSON-like instructions and quantity/risk/broker requests). The system prompt states the escaping convention. Schema, limits, capabilities (no tools) and output validation are unchanged. The prompt hash (and therefore ModelVersion ids) changed with the template id; this is intended and distinguishable.
+
+## D. Requested vs returned model identifier
+`SignalRecord` keeps `model_identifier` (= requested/configured, possibly an alias) and `resolved_model_identifier` (what the provider returned) with `resolved_model_identifier_status` = `RETURNED` | `UNAVAILABLE` | `NOT_CALLED`. If the provider returns none, the resolved id is `None` and marked unavailable; the configured id is never copied into it. Both appear in the journal payload and in the console panel.
+
+## E. NVIDIA hosted provider (`model_providers/nvidia_provider.py`)
+- **Status: implemented and unit-tested against mocked transports only. No real call has been made. The endpoint and model ids below were supplied by the operator and are not verified by this build (no network/credentials).**
+- Endpoint: `POST <NVIDIA_BASE_URL>/chat/completions`; default base `https://integrate.api.nvidia.com/v1` (https required, no credentials/query in the URL). Auth: `Authorization: Bearer $NVIDIA_API_KEY`, server-side only.
+- Env: `NVIDIA_API_KEY` (required), `NVIDIA_MODEL` (default candidate `moonshotai/kimi-k2-instruct`; `moonshotai/kimi-k2-thinking` supported by setting it), `NVIDIA_BASE_URL`.
+- Request: system+user messages, `temperature` 0, `stream` false, **no tools / tool_choice**. Same prompt, same schema validation, same `SignalService` timeout, bounded-retry, request/token-budget and failure-to-NO_SIGNAL handling, same journal provenance.
+- Response: `choices[0].message.content`; returned `model` and `usage` (`prompt_tokens`/`completion_tokens`) retained. For thinking models a leading inline `<think>…</think>` block is discarded and a separate `reasoning_content` field is never read or stored. Thinking models may need a larger `max_output_tokens`; a truncated/invalid answer is rejected (MALFORMED_OUTPUT), never accepted.
+- Cost: not computed unless the operator supplies verified `Pricing`. Limits, pricing, availability and terms are the operator's to confirm.
+- **Selection is explicit** (`model_providers/factory.select_provider`): `stub` | `anthropic` | `nvidia`. There is no default real provider and no fallback; a missing key for the chosen provider stops with `UNAVAILABLE` and nothing else is tried. The signal service never switches providers.
+- Smoke test (manual only): `python3 scripts/slice11_smoke.py --provider nvidia --confirm-live --disclosures <file> --instrument <id> --decision-time <iso> --isin-map ...` — exits 0 only if a schema-valid classification was returned (`classification_confirmed: true`); exits 1 on any failed call; 2 if not confirmed/configured. **Not run.**
