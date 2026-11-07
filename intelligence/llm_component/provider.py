@@ -34,7 +34,7 @@ class ProviderRateLimited(ProviderError):
 @dataclass(frozen=True)
 class ProviderResponse:
     text: str
-    model_identifier: str
+    model_identifier: str | None  # the identifier the PROVIDER returned; None if it did not return one
     input_tokens: int | None = None
     output_tokens: int | None = None
     provider_request_id: str | None = None

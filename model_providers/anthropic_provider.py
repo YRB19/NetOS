@@ -77,11 +77,8 @@ class AnthropicProvider:
 
     def build_request_body(self, request: ProviderRequest) -> dict:
         return {
-            "model": self.model_identifier,
-            "max_tokens": request.max_output_tokens,
-            "temperature": 0,
-            "system": request.system,
-            "messages": [{"role": "user", "content": request.user}],
+            "model": self.model_identifier, "max_tokens": request.max_output_tokens, "temperature": 0,
+            "system": request.system, "messages": [{"role": "user", "content": request.user}],
         }  # fmt: skip (no `tools` key: the component has no tool capability)
 
     def complete(self, request: ProviderRequest) -> ProviderResponse:
@@ -103,7 +100,7 @@ class AnthropicProvider:
             text = "".join(b["text"] for b in obj["content"] if b.get("type") == "text")
             usage = obj.get("usage") or {}
             return ProviderResponse(
-                text=text, model_identifier=str(obj.get("model") or self.model_identifier),
+                text=text, model_identifier=(str(obj["model"]) if obj.get("model") else None),
                 input_tokens=usage.get("input_tokens"), output_tokens=usage.get("output_tokens"),
                 provider_request_id=obj.get("id"),
             )  # fmt: skip

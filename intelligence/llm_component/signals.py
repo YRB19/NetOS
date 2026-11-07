@@ -86,6 +86,14 @@ class SignalRecord:
     estimated_cost_usd: float | None = None
     response_hash: str | None = None
     attempts: int = 0
+    # `model_identifier` is the CONFIGURED/requested id (may be an alias). The id the provider actually
+    # returned is kept separately; if the provider returned none it is None and status UNAVAILABLE.
+    resolved_model_identifier: str | None = None
+    resolved_identifier_status: str = "NOT_CALLED"  # NOT_CALLED | RETURNED | UNAVAILABLE
+
+    @property
+    def requested_model_identifier(self) -> str:
+        return self.model_identifier
 
     @property
     def has_signal(self) -> bool:
@@ -101,6 +109,9 @@ class SignalRecord:
             "context_hash": self.context_hash, "input_snapshot_id": self.input_snapshot_id,
             "provider_status": self.provider_status.value, "detail": self.detail,
             "provider_name": self.provider_name, "model_identifier": self.model_identifier,
+            "requested_model_identifier": self.model_identifier,
+            "resolved_model_identifier": self.resolved_model_identifier,
+            "resolved_model_identifier_status": self.resolved_identifier_status,
             "prompt_hash": self.prompt_hash, "output_schema_version": self.output_schema_version,
             "document_ids": list(self.document_ids), "requested_at": self.requested_at,
             "completed_at": self.completed_at,
@@ -144,9 +155,7 @@ class SignalService:
     def model_identifier(self) -> str:
         return getattr(self.provider, "model_identifier", "NONE")
 
-    def _rec(
-        self, ctx: DisclosureContext, status: ProviderStatus, detail: str, **kw
-    ) -> SignalRecord:  # noqa: ANN003
+    def _rec(self, ctx: DisclosureContext, status: ProviderStatus, detail: str, **kw) -> SignalRecord:  # noqa: ANN003
         self.status_counts[status.value] = self.status_counts.get(status.value, 0) + 1
         return SignalRecord(
             instrument_id=ctx.instrument_id, decision_timestamp=ctx.decision_timestamp,
@@ -162,9 +171,7 @@ class SignalService:
         if not cfg.enabled or self.provider is None:
             return self._rec(ctx, ProviderStatus.DISABLED, "AI overlay disabled; no provider call")
         if ctx.is_empty:
-            return self._rec(
-                ctx, ProviderStatus.EMPTY_CONTEXT, "no available disclosures; no provider call"
-            )
+            return self._rec(ctx, ProviderStatus.EMPTY_CONTEXT, "no available disclosures; no provider call")
         request = render_request(ctx, cfg.max_output_tokens)
         started = self._clock()
         attempts = 0
@@ -202,7 +209,9 @@ class SignalService:
                     + tout * cfg.pricing.usd_per_million_output_tokens) / 1_000_000  # fmt: skip
             self.total_cost_usd += cost
         common = dict(requested_at=started, completed_at=done, input_tokens=tin, output_tokens=tout,
-                      estimated_cost_usd=cost, response_hash=hash_json_stable(resp.text), attempts=attempts)  # fmt: skip
+                      estimated_cost_usd=cost, response_hash=hash_json_stable(resp.text), attempts=attempts,
+                      resolved_model_identifier=resp.model_identifier or None,
+                      resolved_identifier_status="RETURNED" if resp.model_identifier else "UNAVAILABLE")  # fmt: skip
         try:
             interp = parse_interpretation(resp.text, ctx.document_ids)
         except SchemaError as e:
