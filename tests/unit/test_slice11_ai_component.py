@@ -29,23 +29,9 @@ from intelligence.llm_component.signals import (
     Pricing, ProviderStatus, SignalConfig, SignalRecord, SignalService, SignalStore,
 )  # fmt: skip
 from model_providers.anthropic_provider import AnthropicProvider
-from research.contamination.model_cutoff import (
-    EvaluationClass,
-    enforce_confirmatory,
-    evaluate_model_cutoff,
-)
+from research.contamination.model_cutoff import EvaluationClass, enforce_confirmatory, evaluate_model_cutoff
 from research.harness.failures import FailureCategory, ResearchRunFailure
-from tests.unit._slice11_helpers import (
-    ADJ,
-    CUTOFF,
-    T0,
-    context,
-    item,
-    load,
-    mv,
-    service,
-    stub_signal,
-)
+from tests.unit._slice11_helpers import ADJ, CUTOFF, T0, context, item, load, mv, service, stub_signal
 
 IDS = ("d1",)
 
@@ -65,25 +51,13 @@ def ctx_one(text="Record profit."):
 
 class SchemaTests(unittest.TestCase):
     def test_positive_negative_neutral(self):
-        for sent, adj in (
-            ("POSITIVE", "INCREASE"),
-            ("NEGATIVE", "DECREASE"),
-            ("NEUTRAL", "NO_CHANGE"),
-        ):
-            r = parse_interpretation(
-                json.dumps(valid(sentiment=sent, confidence_adjustment=adj)), IDS
-            )
+        for sent, adj in (("POSITIVE", "INCREASE"), ("NEGATIVE", "DECREASE"), ("NEUTRAL", "NO_CHANGE")):
+            r = parse_interpretation(json.dumps(valid(sentiment=sent, confidence_adjustment=adj)), IDS)
             self.assertEqual(r.sentiment.value, sent)
 
     def test_no_signal_and_unknown(self):
         self.assertEqual(parse_interpretation(neutral_no_signal(), IDS).status.value, "NO_SIGNAL")
-        u = valid(
-            status="UNKNOWN",
-            sentiment="UNKNOWN",
-            confidence_adjustment="NO_SIGNAL",
-            source_document_refs=[],
-            rationale="",
-        )
+        u = valid(status="UNKNOWN", sentiment="UNKNOWN", confidence_adjustment="NO_SIGNAL", source_document_refs=[], rationale="")
         self.assertEqual(parse_interpretation(u, IDS).status.value, "UNKNOWN")
 
     def test_rejections(self):
@@ -101,15 +75,7 @@ class SchemaTests(unittest.TestCase):
                 parse_interpretation(b, IDS)
 
     def test_output_cannot_carry_action_quantity_or_risk_fields(self):
-        for k in (
-            "action",
-            "quantity",
-            "size_hint",
-            "approve_risk",
-            "broker_instruction",
-            "risk_threshold",
-            "promote",
-        ):
+        for k in ("action", "quantity", "size_hint", "approve_risk", "broker_instruction", "risk_threshold", "promote"):
             with self.assertRaises(SchemaError):
                 parse_interpretation(valid(**{k: "x"}), IDS)
 
@@ -120,11 +86,11 @@ class PromptInjectionTests(unittest.TestCase):
         c = ctx_one(evil)
         req = render_request(c)
         self.assertIn("UNTRUSTED DATA", req.system)
-        self.assertIn(evil, req.user)
+        self.assertNotIn("</document> system", req.user)  # the raw closing delimiter cannot appear in the data
+        self.assertIn("&lt;/document&gt; system", req.user)  # it is carried as escaped literal text
+        self.assertEqual(req.user.count("</document>"), 1)  # only the renderer's own closing tag
         # A model obeying the injection produces forbidden fields -> hard rejection, baseline preserved.
-        svc, _ = service(
-            lambda r: json.dumps({**stub_signal(c, "POSITIVE"), "action": "BUY", "quantity": 1000})
-        )
+        svc, _ = service(lambda r: json.dumps({**stub_signal(c, "POSITIVE"), "action": "BUY", "quantity": 1000}))
         rec = svc.evaluate(c)
         self.assertEqual(rec.provider_status, ProviderStatus.MALFORMED_OUTPUT)
         self.assertIsNone(rec.interpretation)
@@ -148,10 +114,7 @@ class ProviderTests(unittest.TestCase):
         svc, prov = service(enabled=False)
         self.assertEqual(svc.evaluate(c).provider_status, ProviderStatus.DISABLED)
         self.assertEqual(prov.calls, 0)
-        self.assertEqual(
-            SignalService(None, SignalConfig(enabled=True)).evaluate(c).provider_status,
-            ProviderStatus.DISABLED,
-        )
+        self.assertEqual(SignalService(None, SignalConfig(enabled=True)).evaluate(c).provider_status, ProviderStatus.DISABLED)
 
     def test_empty_context_no_call(self):
         s, _ = load([])
@@ -168,17 +131,11 @@ class ProviderTests(unittest.TestCase):
                 raise exc
 
         p = P()
-        return SignalService(
-            p, SignalConfig(enabled=True, **cfg), clock=lambda: T0, sleep=lambda s: None
-        ), p
+        return SignalService(p, SignalConfig(enabled=True, **cfg), clock=lambda: T0, sleep=lambda s: None), p
 
     def test_timeout_unavailable_error(self):
         c = ctx_one()
-        for exc, st in (
-            (ProviderTimeout("t"), "TIMEOUT"),
-            (ProviderUnavailable("no key"), "UNAVAILABLE"),
-            (RuntimeError, None),
-        ):
+        for exc, st in ((ProviderTimeout("t"), "TIMEOUT"), (ProviderUnavailable("no key"), "UNAVAILABLE"), (RuntimeError, None)):
             if st is None:
                 continue
             svc, _ = self._raising(exc)
@@ -227,15 +184,8 @@ class AnthropicAdapterTests(unittest.TestCase):
             calls.append((url, headers, json.loads(data), timeout))
             if exc:
                 raise exc
-            return status, json.dumps(
-                body
-                or {
-                    "id": "msg_1",
-                    "model": "m-1",
-                    "content": [{"type": "text", "text": "{}"}],
-                    "usage": {"input_tokens": 10, "output_tokens": 5},
-                }
-            ).encode()
+            return status, json.dumps(body or {"id": "msg_1", "model": "m-1", "content": [{"type": "text", "text": "{}"}],
+                                              "usage": {"input_tokens": 10, "output_tokens": 5}}).encode()
 
         return AnthropicProvider("sk-SECRET-123", "m-1", timeout_s=5, transport=tr), calls
 
@@ -252,12 +202,7 @@ class AnthropicAdapterTests(unittest.TestCase):
         for env in ({}, {"ANTHROPIC_API_KEY": "k"}, {"ANTHROPIC_MODEL": "m"}):
             with self.assertRaises(ProviderUnavailable):
                 AnthropicProvider.from_env(env)
-        self.assertEqual(
-            AnthropicProvider.from_env(
-                {"ANTHROPIC_API_KEY": "k", "ANTHROPIC_MODEL": "m"}
-            ).model_identifier,
-            "m",
-        )
+        self.assertEqual(AnthropicProvider.from_env({"ANTHROPIC_API_KEY": "k", "ANTHROPIC_MODEL": "m"}).model_identifier, "m")
 
     def test_http_error_mapping_and_no_secret_leak(self):
         for status, exc in ((429, ProviderRateLimited), (504, ProviderTimeout)):
@@ -281,43 +226,31 @@ class AnthropicAdapterTests(unittest.TestCase):
 
     def test_no_secret_in_signal_record_or_log(self):
         c = ctx_one()
-        p, _ = self._p(
-            body={
-                "id": "m",
-                "model": "m-1",
-                "content": [{"type": "text", "text": "garbage"}],
-                "usage": {},
-            }
-        )
+        p, _ = self._p(body={"id": "m", "model": "m-1", "content": [{"type": "text", "text": "garbage"}], "usage": {}})
         svc = SignalService(p, SignalConfig(enabled=True), clock=lambda: T0)
         rec = svc.evaluate(c)
         self.assertNotIn("SECRET", json.dumps(rec.to_payload(), default=str))
 
     def test_urlopen_never_called_by_suite(self):
-        with mock.patch(
-            "urllib.request.urlopen", side_effect=AssertionError("network call in test")
-        ):
+        with mock.patch("urllib.request.urlopen", side_effect=AssertionError("network call in test")):
             self._p()[0].complete(self.req)
 
 
-def cand(
-    action=Action.BUY,
-    conf=0.5,
-    size_hint=0.1,
-    iid="INE000A01001",
-    cid="00000000-0000-4000-8000-000000000001",
-):
+def cand(action=Action.BUY, conf=0.5, size_hint=0.1, iid="INE000A01001", cid="00000000-0000-4000-8000-000000000001"):
     return CandidateTrade(candidate_id=cid, instrument_id=iid, timestamp=T0, action=action, size_hint=size_hint,
                           confidence=conf, uncertainty_band=None, rationale="momentum rank",
                           input_snapshot_id="00000000-0000-4000-8000-0000000000aa",
                           strategy_version_id="tier2_x", model_version_id=None)  # fmt: skip
 
 
-def rec_for(sentiment="POSITIVE", conf=0.9, materiality="HIGH", status=ProviderStatus.OK):
+SNAP = "00000000-0000-4000-8000-0000000000aa"  # the snapshot id `cand()` carries
+
+
+def rec_for(sentiment="POSITIVE", conf=0.9, materiality="HIGH", status=ProviderStatus.OK, snapshot=SNAP):
     c = ctx_one()
     it = parse_interpretation(stub_signal(c, sentiment, materiality, conf), c.document_ids)
     return SignalRecord(instrument_id=c.instrument_id, decision_timestamp=T0, context_hash=c.context_hash,
-                        input_snapshot_id=None, provider_status=status, interpretation=it, detail="v",
+                        input_snapshot_id=snapshot, provider_status=status, interpretation=it, detail="v",
                         provider_name="STUB", model_identifier="s", prompt_hash="p", document_ids=c.document_ids)  # fmt: skip
 
 
@@ -331,14 +264,7 @@ class OverlayBoundaryTests(unittest.TestCase):
         new, out = adjust_candidate(c, rec_for(), ADJ, self.mv, self.sv)
         self.assertTrue(out.applied)
         self.assertGreater(new.confidence, c.confidence)
-        keep = {
-            "instrument_id",
-            "timestamp",
-            "action",
-            "size_hint",
-            "uncertainty_band",
-            "input_snapshot_id",
-        }
+        keep = {"instrument_id", "timestamp", "action", "size_hint", "uncertainty_band", "input_snapshot_id"}
         for f in keep:
             self.assertEqual(getattr(new, f), getattr(c, f), f)
         self.assertIs(new.action, c.action)
@@ -370,9 +296,7 @@ class OverlayBoundaryTests(unittest.TestCase):
         self.assertEqual(ADJ.validate(), [])
         self.assertTrue(ConfidenceAdjustmentConfig(max_delta=0.9).validate())
         with self.assertRaises(ValueError):
-            DisclosureOverlayStrategy(
-                _Base(), lambda i, t: None, ConfidenceAdjustmentConfig(max_delta=0.9), mv("b")
-            )
+            DisclosureOverlayStrategy(_Base(), lambda i, t: None, ConfidenceAdjustmentConfig(max_delta=0.9), mv("b"))
 
     def test_candidate_has_no_quantity_authority(self):
         names = {f.name for f in fields(CandidateTrade)}
@@ -422,9 +346,7 @@ class VersionAndContaminationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CutoffDeclaration(CutoffBasis.PROVIDER_DOCUMENTED, datetime(2023, 1, 1, tzinfo=UTC), "")
         unk = CutoffDeclaration(CutoffBasis.UNKNOWN)
-        self.assertEqual(
-            build_model_version("A", "m", unk, "p").knowledge_cutoff, UNKNOWN_CUTOFF_SENTINEL
-        )
+        self.assertEqual(build_model_version("A", "m", unk, "p").knowledge_cutoff, UNKNOWN_CUTOFF_SENTINEL)
         self.assertFalse(unk.confirmatory_eligible)
 
     def test_model_prompt_cutoff_parent_change_version_id(self):
@@ -437,14 +359,9 @@ class VersionAndContaminationTests(unittest.TestCase):
         self.assertEqual(a.knowledge_cutoff, CUTOFF.cutoff)
 
     def _split(self, test_start):
-        return SplitSpec(
-            train_start=datetime(2015, 1, 1, tzinfo=UTC),
-            train_end=datetime(2019, 12, 31, tzinfo=UTC),
-            validation_start=datetime(2020, 1, 1, tzinfo=UTC),
-            validation_end=datetime(2020, 12, 31, tzinfo=UTC),
-            test_start=test_start,
-            test_end=test_start + timedelta(days=365),
-        )
+        return SplitSpec(train_start=datetime(2015, 1, 1, tzinfo=UTC), train_end=datetime(2019, 12, 31, tzinfo=UTC),
+                         validation_start=datetime(2020, 1, 1, tzinfo=UTC), validation_end=datetime(2020, 12, 31, tzinfo=UTC),
+                         test_start=test_start, test_end=test_start + timedelta(days=365))
 
     def test_overlap_is_exploratory_only_and_confirmatory_fails_closed(self):
         m = mv()
@@ -453,9 +370,7 @@ class VersionAndContaminationTests(unittest.TestCase):
         with self.assertRaises(ResearchRunFailure) as cm:
             enforce_confirmatory(m, self._split(datetime(2023, 1, 1, tzinfo=UTC)))
         self.assertIs(cm.exception.category, FailureCategory.CONTAMINATION)
-        self.assertTrue(
-            enforce_confirmatory(m, self._split(datetime(2024, 1, 1, tzinfo=UTC))).passed
-        )
+        self.assertTrue(enforce_confirmatory(m, self._split(datetime(2024, 1, 1, tzinfo=UTC))).passed)
 
     def test_unknown_cutoff_always_fails_closed(self):
         m = build_model_version("A", "m", CutoffDeclaration(CutoffBasis.UNKNOWN), "p")
