@@ -97,18 +97,12 @@ class LocalDisclosureImport:
             report["by_status"][rec.status.value] = report["by_status"].get(rec.status.value, 0) + 1
             if rec.status in (DisclosureStatus.REJECTED, DisclosureStatus.UNMAPPED):
                 report["rejections"].append(
-                    {
-                        "document_id": rec.document_id,
-                        "status": rec.status.value,
-                        "warnings": list(rec.warnings),
-                    }
+                    {"document_id": rec.document_id, "status": rec.status.value, "warnings": list(rec.warnings)}
                 )
         return report
 
     # ------------------------------------------------------------------
-    def _to_record(
-        self, item: dict, instruments: InstrumentMap, ingest_default: datetime
-    ) -> DisclosureRecord:
+    def _to_record(self, item: dict, instruments: InstrumentMap, ingest_default: datetime) -> DisclosureRecord:
         errs: list[str] = []
         src_id = str(item.get("source_document_id") or "").strip()
         text = item.get("text")
@@ -123,9 +117,7 @@ class LocalDisclosureImport:
         if published is None and not any(e.startswith("published_at") for e in errs):
             errs.append("published_at missing")
         event = _ts(item.get("event_time"), "event_time", errs)
-        ingested = _ts(item.get("ingested_at"), "ingested_at", errs) or ingest_default.astimezone(
-            UTC
-        )
+        ingested = _ts(item.get("ingested_at"), "ingested_at", errs) or ingest_default.astimezone(UTC)
         avail = _ts(item.get("available_at"), "available_at", errs)
         if published is not None:
             floor = max(published, ingested)
