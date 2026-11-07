@@ -27,25 +27,14 @@ INGESTED = datetime(2026, 3, 25, 11, 0, tzinfo=UTC)
 
 
 def disclosure_store(isins=ISINS, covered=None):
-    items = [
-        {
-            "source_document_id": f"D-{i}",
-            "exchange": "NSE",
-            "symbol": f"S{i}",
-            "isin": isin,
-            "published_at": PUBLISHED,
-            "title": "Results",
-            "text": f"SYNTHETIC announcement for {isin}.",
-        }  # fmt: skip
-        for i, isin in enumerate(isins)
-        if covered is None or isin in covered
-    ]
+    items = [{"source_document_id": f"D-{i}", "exchange": "NSE", "symbol": f"S{i}", "isin": isin,
+              "published_at": PUBLISHED, "title": "Results", "text": f"SYNTHETIC announcement for {isin}."}  # fmt: skip
+             for i, isin in enumerate(isins) if covered is None or isin in covered]
     p = Path(tempfile.mkdtemp()) / "d.jsonl"
     p.write_text("\n".join(map(json.dumps, items)))
     st = DisclosureStore()
     rep = LocalDisclosureImport(p, clock=lambda: INGESTED).load_into(
-        st, InstrumentMap({i: i for i in isins}, {("NSE", f"S{k}"): i for k, i in enumerate(isins)})
-    )
+        st, InstrumentMap({i: i for i in isins}, {("NSE", f"S{k}"): i for k, i in enumerate(isins)}))
     return st, rep
 
 
@@ -73,9 +62,7 @@ def run_overlay(mode="POSITIVE", covered=None, provider=None, enabled=True, cfg=
         def lookup(iid, ts):
             return box["signals"].get(iid, ts)
 
-        o = DisclosureOverlayStrategy(
-            base, lookup, cfg or ConfidenceAdjustmentConfig(), mv(base.strategy_version_id)
-        )
+        o = DisclosureOverlayStrategy(base, lookup, cfg or ConfidenceAdjustmentConfig(), mv(base.strategy_version_id))
         box["overlay"] = o
         return o
 
@@ -100,23 +87,9 @@ def run_overlay(mode="POSITIVE", covered=None, provider=None, enabled=True, cfg=
             return super().complete(req)
 
     prov = provider or P(responder)
-    svc = SignalService(
-        prov,
-        SignalConfig(enabled=enabled, max_requests=10_000),
-        clock=lambda: INGESTED,
-        sleep=lambda s: None,
-    )
+    svc = SignalService(prov, SignalConfig(enabled=enabled, max_requests=10_000), clock=lambda: INGESTED, sleep=lambda s: None)
     for c in rec_box["r"].seen:
-        signals.put(
-            svc.evaluate(
-                store.build_context(
-                    c.instrument_id,
-                    c.timestamp,
-                    ContextConfig(lookback_days=366),
-                    c.input_snapshot_id,
-                )
-            )
-        )
+        signals.put(svc.evaluate(store.build_context(c.instrument_id, c.timestamp, ContextConfig(lookback_days=366), c.input_snapshot_id)))
     box["signals"] = signals
     res, j, r = go(strat_wrap=wrap, pc_over=pc_over)
     return res, j, r, box["overlay"], signals, svc
@@ -135,18 +108,8 @@ def _strip(o):
 def comparable(reader):
     """Economic outcome downstream of the strategy (verdicts, quantities, fills, portfolio),
     independent of candidate re-identification and of the additive AI journal events."""
-    keep = (
-        ET.RISK_EVALUATED,
-        ET.SIZING_EVALUATED,
-        ET.ORDER_INTENT,
-        ET.FILL_RECORDED,
-        ET.PORTFOLIO_SETTLED,
-    )
-    return [
-        (e.event_type.value, json.dumps(_strip(e.payload), sort_keys=True, default=str))
-        for e in reader.events()
-        if e.event_type in keep
-    ]
+    keep = (ET.RISK_EVALUATED, ET.SIZING_EVALUATED, ET.ORDER_INTENT, ET.FILL_RECORDED, ET.PORTFOLIO_SETTLED)
+    return [(e.event_type.value, json.dumps(_strip(e.payload), sort_keys=True, default=str)) for e in reader.events() if e.event_type in keep]
 
 
 class AiDisabledInvariant(unittest.TestCase):
@@ -203,10 +166,7 @@ class AiEnabledLineage(unittest.TestCase):
         changed = [k for k in base if base[k].payload["confidence"] != ai[k].payload["confidence"]]
         self.assertTrue(changed)
         for k in changed:
-            self.assertLessEqual(
-                abs(float(ai[k].payload["confidence"]) - float(base[k].payload["confidence"])),
-                0.10 + 1e-9,
-            )
+            self.assertLessEqual(abs(float(ai[k].payload["confidence"]) - float(base[k].payload["confidence"])), 0.10 + 1e-9)
             self.assertEqual(ai[k].payload["model_version_id"], self.o.model_version.version_id)
 
     def test_orders_and_fills_unaffected_because_confidence_is_not_a_sizing_input(self):
@@ -241,17 +201,13 @@ class AiEnabledLineage(unittest.TestCase):
         res2, j2, r2, o2, s2, svc2 = run_overlay("POSITIVE")
         a = [e.payload for e in self.r.events() if e.event_type is ET.AI_SIGNAL_EVALUATED]
         b = [e.payload for e in r2.events() if e.event_type is ET.AI_SIGNAL_EVALUATED]
-        self.assertEqual(
-            json.dumps(a, sort_keys=True, default=str), json.dumps(b, sort_keys=True, default=str)
-        )
+        self.assertEqual(json.dumps(a, sort_keys=True, default=str), json.dumps(b, sort_keys=True, default=str))
         self.assertEqual(self.o.model_version.version_id, o2.model_version.version_id)
 
     def test_different_adjustment_config_creates_distinguishable_strategy_version(self):
         _, _, _, o2, _, _ = run_overlay("POSITIVE", cfg=ConfidenceAdjustmentConfig(max_delta=0.05))
         self.assertNotEqual(self.o.overlay_version_id, o2.overlay_version_id)
-        self.assertEqual(
-            self.o.strategy_version_id, o2.strategy_version_id
-        )  # run-facing id stays the baseline
+        self.assertEqual(self.o.strategy_version_id, o2.strategy_version_id)  # run-facing id stays the baseline
 
 
 class RiskVetoRemainsAuthoritative(unittest.TestCase):
@@ -260,23 +216,17 @@ class RiskVetoRemainsAuthoritative(unittest.TestCase):
         from tests.unit._pipeline_helpers import pipeline, tier2
 
         over = None
-        res, j, r, o, s, svc = run_overlay(
-            "POSITIVE", pc_over=dict(kill_switch=KillSwitchState.ACTIVE)
-        )
+        res, j, r, o, s, svc = run_overlay("POSITIVE", pc_over=dict(kill_switch=KillSwitchState.ACTIVE))
         self.assertTrue(svc.status_counts.get("OK"))  # strong signals really were produced
         self.assertEqual(len(res.orders), 0)
         self.assertEqual(len(res.broker_fills), 0)
         self.assertTrue(all(rd["verdict"] != "APPROVE" for rd in res.risk_decisions))
-        self.assertFalse(
-            hasattr(o, "place_order") or hasattr(o, "submit_order") or hasattr(o, "approve")
-        )
+        self.assertFalse(hasattr(o, "place_order") or hasattr(o, "submit_order") or hasattr(o, "approve"))
         del over, pipeline, tier2
 
     def test_model_output_cannot_approve_or_submit(self):
         c = type("C", (), {"document_ids": ("x",)})()
-        bad = json.dumps(
-            {**stub_signal(c, "POSITIVE"), "risk_approved": True, "order": {"qty": 10}}
-        )
+        bad = json.dumps({**stub_signal(c, "POSITIVE"), "risk_approved": True, "order": {"qty": 10}})
         svc = SignalService(StubProvider(bad), SignalConfig(enabled=True), clock=lambda: INGESTED)
         st, _ = disclosure_store()
         rec = svc.evaluate(st.build_context(ISINS[0], datetime(2026, 4, 6, tzinfo=UTC)))
