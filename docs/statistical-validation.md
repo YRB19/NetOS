@@ -117,3 +117,7 @@ Reports are stored per attempt: `validity/<run_id>/report-<attempt_id>.json`.
 
 ## Slice 11 note — model knowledge cutoff (ER-3)
 `research/contamination/model_cutoff.py` classifies an evaluation as `EXPLORATORY_ONLY` when the test window starts on/before the model's declared knowledge cutoff, and `enforce_confirmatory` raises `CONTAMINATION`. An unknown cutoff is the sentinel `9999-12-31` and always fails closed. No cutoff date has been established for any real model. Any AI-enabled run is a research signal; no run in this repository shows that it improves risk-adjusted return (that is Slice 12's question).
+
+
+## Slice 11 closure — model cutoff in the enforced path
+`ResearchEvaluationService.evaluate` applies `assess_ai_model` to AI-enabled strategies only. Unknown/undeclared cutoff, unlinked or inconsistent model metadata, or a test window starting on/before the declared cutoff => `EXPLORATORY_ONLY` (reasons prefixed `AI_MODEL:`), persisted in the report as `ai_model_provenance`. Non-AI evaluations are unchanged. Declared cutoffs are operator-supplied and unverified. No AI-enabled run here is evidence that the signal improves returns.

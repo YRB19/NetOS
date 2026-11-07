@@ -24,14 +24,17 @@ Key principles carried over from that ideation:
 | Phase | Capability | Status |
 |-------|-----------|--------|
 | Slices 0–8 (done) | Deterministic historical data ingestion, validation, normalization, versioning; Tier-1 equal-weight baseline; Tier-2 momentum baseline; offline research harness with split/contamination guards; decision journal & observability; order state machine & reconciliation; simulated broker; deterministic risk engine & sizing | **Complete** |
-| Slice 9+ (planned) | Statistical hardening of the evaluation harness | In progress |
-| Slice 10+ (planned) | Console / dashboard for decision review | Not started |
-| Future | LLM-assisted trade proposal (Plane 2), evaluated deterministically against baselines before promotion | Planned |
+| Slice 9 (done) | Research validity & statistical hardening of the evaluation harness (synthetic infrastructure) | **Complete** |
+| Slice 10 (done) | Private, read-only operator console / command centre | **Complete** |
+| Slice 11 (done, offline-tested) | Optional, disableable AI disclosure-classification overlay on Tier-2 (confidence only); providers: offline stub, Anthropic, NVIDIA hosted. **No real provider has been smoke-tested; no verified online disclosure source is connected.** | **Implemented; not yet live-tested** |
+| Slice 12 (not started) | AI-vs-baseline evaluation gate | Not started |
+| Slice 13 (not started) | Governance & Promotion prerequisites + paper-trading harness (governance is a mandatory prerequisite, not deferred) | Not started |
+| Future | Any LLM role beyond the bounded research signal, evaluated deterministically against baselines before promotion | Planned |
 | Future | Self-improvement loop confined to offline research; candidate artifacts promoted only through human-gated review | Planned |
 | Future | Staged autonomy progression (Level 0 advisory → Level 3 fully autonomous) per operator decision | Planned |
 | Future | Live execution path, technically designed but gated closed until regulatory conditions (SEBI algo framework, static IP, 10 OPS threshold, broker ToS review, etc.) are satisfied | Not started; gated |
 
-**Not built and not claimed:** live broker connection, real-money trading, LLM-driven execution, demonstrated alpha, or any self-modifying code in production.
+**Not built and not claimed:** live broker connection, real-money trading, LLM-driven execution (the AI overlay can only adjust a candidate's `confidence` and has no order, sizing or risk authority), demonstrated alpha, or any self-modifying code in production.
 
 ## Architecture at a glance
 
@@ -79,7 +82,7 @@ A sixth, fully separate **Research & Backtesting environment** consumes the same
 
 ## Current status
 
-Slices 0–8 are complete:
+Slices 0–11 are implemented (Slices 9–11 on synthetic infrastructure):
 
 * **Data pipeline** — CSV ingestion (Bhavcopy), validation, split adjustment, deterministic versioning, JSONL persistence
 * **Tier-1 baseline** — equal-weight BUY/HOLD/SELL advisory candidates
@@ -88,10 +91,15 @@ Slices 0–8 are complete:
 * **Slice 6** — deterministic Risk Engine (RR-1..RR-9, fail-closed), sizing, simulated broker
 * **Slice 7** — order state machine, reconciliation hardening, crash recovery
 * **Slice 8** — durable hash-chained decision journal & observability
+* **Slice 9** — research validity & statistical hardening (enforced evaluation workflow)
+* **Slice 10** — read-only operator console / command centre
+* **Slice 11** — optional AI disclosure-signal adapter: point-in-time disclosure store, strict output schema, offline stub + Anthropic + NVIDIA providers (`model_providers/`), confidence-only overlay, cutoff-gated confirmatory evaluation. See `docs/ai-disclosure-signal.md`.
 
-Test coverage: ~787 unittest tests passing, 0 architecture-lint violations.
+Test coverage: see `docs/slice-status.md` for the current verified counts (unittest, frontend node tests) and architecture-checker results.
 
-**Explicitly not yet present:** LLM integration, live broker, credentials, live execution path, demonstrated profitability. A passing run is infrastructure verification, not evidence of alpha.
+**Explicitly not yet present:** a live broker, broker credentials, a live execution path, demonstrated profitability, a connected real-time disclosure feed, and any real-provider smoke test.
+
+**LLM status (accurate as of Slice 11):** an *optional* LLM research-signal adapter exists and is exercised only with an offline stub in the test suite. The Anthropic and NVIDIA provider adapters are implemented and unit-tested against mocked transports; neither has been called for real. The model has no tools, no credentials to any broker, and cannot change BUY/SELL/HOLD, size, risk, or orders. Confidence adjustments currently do not alter sizing or simulated P&L (confidence is not a sizing/risk input). Slice 12 (the evaluation of whether the signal helps) has not started. A passing run is infrastructure verification, not evidence of alpha.
 
 ## Setup & validation
 

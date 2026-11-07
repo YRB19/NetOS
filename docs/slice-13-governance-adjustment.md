@@ -1,6 +1,6 @@
 # Roadmap adjustment — Governance folded into Slice 13 (owner decision)
 
-**Source caveat:** `NetOS_Post_Slice_7_Roadmap(2).md` was **not present** in the uploaded repository or documents, so this is an addendum, not a line-by-line reconciliation of that roadmap. Slice numbering is unchanged. Slice 12 (AI-vs-Baseline Evaluation) is **not** modified and may not be skipped.
+**Source caveat (re-checked 2026-11-07):** the owner states `NetOS_Post_Slice_7_Roadmap(2).md` was supplied separately, but it is **not in this workspace and not in the repository** (only `NetOS_3.zip` was uploaded; a filesystem search found no such file). This is therefore an addendum, not a line-by-line reconciliation, and the roadmap is not claimed to be stored in the repo. Slice numbering is unchanged. Slice 12 (AI-vs-Baseline Evaluation) is **not** modified and may not be skipped.
 
 ## Slice 13 is now: **Governance & Promotion Prerequisites + Paper-Trading Harness**
 Before any paper session can start, Slice 13 must implement and verify:
