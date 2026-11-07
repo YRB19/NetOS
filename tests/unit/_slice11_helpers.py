@@ -9,11 +9,7 @@ from pathlib import Path
 
 from data.adapters.disclosure_local_import import InstrumentMap, LocalDisclosureImport
 from data.disclosures.store import ContextConfig, DisclosureStore
-from intelligence.llm_component.model_version import (
-    CutoffBasis,
-    CutoffDeclaration,
-    build_model_version,
-)
+from intelligence.llm_component.model_version import CutoffBasis, CutoffDeclaration, build_model_version
 from intelligence.llm_component.overlay import ConfidenceAdjustmentConfig
 from intelligence.llm_component.provider import StubProvider, stub_signal
 from intelligence.llm_component.signals import SignalConfig, SignalService
@@ -29,12 +25,7 @@ def imap(instrument_id: str = "INE000A01001") -> InstrumentMap:
                          by_exchange_symbol={("NSE", "AAA"): instrument_id})  # fmt: skip
 
 
-def item(
-    src="DOC-1",
-    text="Company reports record quarterly profit.",
-    published="2024-02-28T10:00:00+00:00",
-    **kw,
-):
+def item(src="DOC-1", text="Company reports record quarterly profit.", published="2024-02-28T10:00:00+00:00", **kw):
     d = {"source_document_id": src, "exchange": "NSE", "symbol": "AAA", "isin": "INE000A01001",
          "published_at": published, "text": text, "title": "Results"}  # fmt: skip
     d.update(kw)
@@ -56,9 +47,7 @@ def context(store, instrument="INE000A01001", ts=T0, snap="snap-1", cfg=None):
 
 def service(responder=None, enabled=True, **cfg):
     prov = StubProvider(responder)
-    return SignalService(
-        prov, SignalConfig(enabled=enabled, **cfg), clock=lambda: T0, sleep=lambda s: None
-    ), prov
+    return SignalService(prov, SignalConfig(enabled=enabled, **cfg), clock=lambda: T0, sleep=lambda s: None), prov
 
 
 def mv(parent="tier2_x", provider="STUB", model="stub-model-v1", cutoff=CUTOFF):
@@ -66,17 +55,4 @@ def mv(parent="tier2_x", provider="STUB", model="stub-model-v1", cutoff=CUTOFF):
 
 
 ADJ = ConfidenceAdjustmentConfig()
-__all__ = [
-    "ADJ",
-    "CUTOFF",
-    "INGEST",
-    "T0",
-    "context",
-    "imap",
-    "item",
-    "load",
-    "mv",
-    "service",
-    "stub_signal",
-    "timedelta",
-]
+__all__ = ["ADJ", "CUTOFF", "INGEST", "T0", "context", "imap", "item", "load", "mv", "service", "stub_signal", "timedelta"]

@@ -21,9 +21,7 @@ IDS: dict = {}
 
 def setUpModule():
     global _TMP, DEMO
-    from tests.unit.test_console_api import (
-        demo,
-    )  # the same demo-store builder the console tests use
+    from tests.unit.test_console_api import demo  # the same demo-store builder the console tests use
 
     _TMP = tempfile.TemporaryDirectory()
     DEMO = Path(_TMP.name) / "demo"
@@ -57,6 +55,8 @@ class AiSignalsReadModel(unittest.TestCase):
         self.assertGreater(o["adjusted_confidence_events"], 0)
         self.assertEqual(o["status_counts"].get("OK"), o["events"])
         self.assertEqual(o["models"], ["stub-model-v1"])
+        self.assertEqual(o["requested_models"], ["stub-model-v1"])
+        self.assertEqual(o["resolved_models"], ["stub-model-v1"])  # what the (stub) provider returned
 
     def test_stub_is_never_presented_as_a_real_provider(self):
         self.assertIn("no real model was called", self.out["provider"])
@@ -71,9 +71,7 @@ class AiSignalsReadModel(unittest.TestCase):
             self.assertNotIn(bad, s)
 
     def test_ai_disabled_run_reports_disabled_without_inventing_activity(self):
-        out = R.ai_signals(
-            ArtifactStore(DEMO), IDS["complete"] if "complete" in IDS else next(iter(IDS.values()))
-        )
+        out = R.ai_signals(ArtifactStore(DEMO), IDS["complete"] if "complete" in IDS else next(iter(IDS.values())))
         self.assertFalse(out["ai_used"])
         self.assertEqual(out["run_label"], "AI-DISABLED")
         self.assertEqual(out["provider"], "DISABLED")
