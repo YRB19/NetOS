@@ -383,7 +383,7 @@ export function aiPanel(ai) {
   const cost = ai.estimated_cost_usd === null || ai.estimated_cost_usd === undefined ? "not computed (no verified pricing configured)" : `USD ${esc(ai.estimated_cost_usd)}`;
   const rows = (ai.rows || []).slice(0, 12).map((r) => `<tr><td><code>${esc(short(r.instrument_id || "", 18))}</code></td><td>${esc(r.provider_status)}</td><td>${esc(r.sentiment || "\u2014")}</td><td>${esc(r.materiality || "\u2014")}</td><td>${r.applied ? `${esc(r.original_confidence)} \u2192 ${esc(r.adjusted_confidence)}` : esc(r.outcome_reason || "no change")}</td></tr>`).join("");
   return `<section class="panel ai-panel" aria-label="AI research signal"><h3>AI research signal <small class="badge">RESEARCH SIGNAL ONLY</small></h3>
-<p><strong>${esc(ai.run_label)}</strong> \u00b7 provider: ${esc(ai.provider)} \u00b7 models: ${esc((ai.models || []).join(", ") || "\u2014")}</p>
+<p><strong>${esc(ai.run_label)}</strong> \u00b7 provider: ${esc(ai.provider)} \u00b7 requested model: ${esc((ai.requested_models || ai.models || []).join(", ") || "\u2014")} \u00b7 returned by provider: ${esc((ai.resolved_models || []).join(", ") || (ai.resolved_model_unavailable_events ? "unavailable" : "\u2014"))}</p>
 <p>Model version ${esc((ai.model_versions || []).join(", ") || "\u2014")} \u00b7 prompt ${esc((ai.prompt_hashes || []).map((h) => short(h, 10)).join(", ") || "\u2014")} \u00b7 schema ${esc((ai.output_schema_versions || []).join(", ") || "\u2014")}</p>
 <p>${esc(ai.events)} signal events \u00b7 ${esc(ai.adjusted_confidence_events)} confidence adjustments \u00b7 ${esc(ai.no_signal_or_unknown)} no-signal/unknown/failed \u00b7 tokens ${tok} \u00b7 cost ${cost}</p>
 <ul class="chips">${sc}</ul>

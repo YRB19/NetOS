@@ -1101,14 +1101,9 @@ def ai_signals(store, run_id, allow_unverified: bool = False) -> dict:
     tokens_known = False
     cost = 0.0
     cost_known = False
-    models, model_versions, prompts, schemas, providers, adjustments = (
-        set(),
-        set(),
-        set(),
-        set(),
-        set(),
-        set(),
-    )
+    models, model_versions, prompts, schemas, providers, adjustments = set(), set(), set(), set(), set(), set()
+    resolved_models: set = set()
+    resolved_unavailable = 0
     rows = []
     for e in evs:
         p = e.payload
@@ -1117,11 +1112,7 @@ def ai_signals(store, run_id, allow_unverified: bool = False) -> dict:
         status_counts[st] = status_counts.get(st, 0) + 1
         applied += 1 if p.get("applied") else 0
         # Journal payloads persist numbers as strings; coerce defensively and never invent a value.
-        ti, to, co = (
-            _num(sig.get("usage_input_units")),
-            _num(sig.get("usage_output_units")),
-            _num(sig.get("estimated_cost_usd")),
-        )
+        ti, to, co = _num(sig.get("usage_input_units")), _num(sig.get("usage_output_units")), _num(sig.get("estimated_cost_usd"))
         if ti is not None:
             tokens_in += int(ti)
             tokens_known = True
@@ -1135,6 +1126,10 @@ def ai_signals(store, run_id, allow_unverified: bool = False) -> dict:
                             (schemas, "output_schema_version"), (providers, "provider_name")):  # fmt: skip
             if sig.get(key):
                 bucket.add(sig[key])
+        if sig.get("resolved_model_identifier"):
+            resolved_models.add(sig["resolved_model_identifier"])
+        if sig.get("resolved_model_identifier_status") == "UNAVAILABLE":
+            resolved_unavailable += 1
         if p.get("model_version_id"):
             model_versions.add(p["model_version_id"])
         if p.get("adjustment_version"):
@@ -1148,11 +1143,13 @@ def ai_signals(store, run_id, allow_unverified: bool = False) -> dict:
             "original_confidence": p.get("original_confidence"), "adjusted_confidence": p.get("adjusted_confidence"),
             "document_ids": sig.get("document_ids") or [], "detail": sig.get("detail"),
         })  # fmt: skip
-    real = bool(providers - {"STUB", "NONE"})
+    real = bool(providers - {"STUB", "NONE"})  # ANTHROPIC / NVIDIA => a real provider call was recorded
     return {
         **base, "ai_used": True, "run_label": "AI-ENABLED",
         "provider": "REAL_PROVIDER_RECORDED" if real else "STUB_OR_OFFLINE (no real model was called)",
-        "provider_names": sorted(providers), "models": sorted(models), "model_versions": sorted(model_versions),
+        "provider_names": sorted(providers), "models": sorted(models),
+        "requested_models": sorted(models), "resolved_models": sorted(resolved_models),
+        "resolved_model_unavailable_events": resolved_unavailable, "model_versions": sorted(model_versions),
         "prompt_hashes": sorted(prompts), "output_schema_versions": sorted(schemas),
         "adjustment_versions": sorted(adjustments), "events": len(evs), "adjusted_confidence_events": applied,
         "status_counts": status_counts,

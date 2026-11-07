@@ -26,6 +26,8 @@ test("AI panel: AI-enabled run shows recorded facts, label, and stub honesty; es
   });
   assert.match(h, /RESEARCH SIGNAL ONLY/);
   assert.match(h, /no real model was called/);
+  assert.match(h, /requested model: stub-model-v1/);
+  assert.match(h, /returned by provider/);
   assert.match(h, /not computed/);
   assert.match(h, /cannot change BUY\/SELL\/HOLD/);
   assert.doesNotMatch(h, /<img src=x/);
