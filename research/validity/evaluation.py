@@ -53,7 +53,7 @@ def assess_criteria(protocol: ExperimentProtocol, extended_metrics: dict) -> dic
 
 def _assemble(*, protocol, protocol_hash, protocol_registered_at, result, extended_metrics, quality,
               holdout_status, trial_accounting, pbo, regimes, walk_forward, purge, journal_refs,
-              verification, validity_override, reasons) -> dict:  # fmt: skip
+              verification, validity_override, reasons, model_provenance=None) -> dict:  # fmt: skip
     """Shared assembly. `validity_override` (verdict, reason) lets the caller cap the verdict."""
     contamination = result.contamination_report
     pit = contamination.get("point_in_time", {})
@@ -130,6 +130,8 @@ def _assemble(*, protocol, protocol_hash, protocol_registered_at, result, extend
         },  # fmt: skip
         "uncertainty_notice": "Passing checks, PBO or a positive return is not evidence of sustainable future profit.",
     }
+    if model_provenance is not None:  # additive: non-AI reports are byte-for-byte unchanged
+        body["ai_model_provenance"] = model_provenance
     body["report_hash"] = hash_json_stable(jsonable(body))
     return body
 
@@ -171,7 +173,8 @@ def build_verified_report(*, evidence, protocol: ExperimentProtocol, result: Res
         result=result, extended_metrics=extended_metrics, quality=quality, holdout_status=v["holdout_status"],
         trial_accounting=ta, pbo=pbo, regimes=regimes, walk_forward=walk_forward, purge=purge,
         journal_refs=journal_refs, verification={"status": "VERIFIED" if v["ok"] else "FAILED", "problems": v["problems"]},
-        validity_override=override, reasons=reasons)  # fmt: skip
+        validity_override=override, reasons=reasons,
+        model_provenance=getattr(evidence, "model_provenance", None))  # fmt: skip
 
 
 def build_report(*, protocol: ExperimentProtocol, protocol_hash: str, protocol_registered_at: str | None,

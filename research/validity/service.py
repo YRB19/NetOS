@@ -19,6 +19,7 @@ from pathlib import Path
 from data.features.context_builder import compute_market_data_snapshot_version
 from data.features.universe import PermittedUniverse
 from domain.models.market_data import MarketData
+from research.contamination.model_cutoff import assess_ai_model
 from research.contamination.point_in_time import AvailabilityLedger
 from research.experiments.store import _files_for, content_digest, write_run
 from research.harness.config import EvaluationPeriod, ResearchConfig
@@ -132,7 +133,8 @@ class ResearchEvaluationService:
                  baseline_ids: tuple[str, ...] | None = None, baseline_result: ResearchRunResult | None = None,
                  assumptions: ExecutionAssumptions | None = None, regime: RegimeDefinition | None = None,
                  pbo_returns: dict | None = None, pbo_partitions: int = 8,
-                 journal_refs: dict | None = None) -> EvaluationOutcome:  # fmt: skip
+                 journal_refs: dict | None = None, model_version=None,
+                 model_provenance: dict | None = None) -> EvaluationOutcome:  # fmt: skip
         started_at = ensure_utc(self._clock())
         p_hash = protocol.protocol_hash()
         confirmatory = protocol.mode is ExperimentMode.CONFIRMATORY
@@ -169,6 +171,16 @@ class ResearchEvaluationService:
         problems = self._preflight(protocol, config, strategy, market_data, universe_schedule, provenance,
                                    baseline_ids, dataset_hash, hid, started_at)  # fmt: skip
         downgrade: list[str] = []
+        # Slice 11: AI-enabled evaluations are confirmatory-eligible only with a linked ModelVersion and
+        # DOCUMENTED cutoff provenance that the test window does not overlap. Non-AI evaluations skip this
+        # block entirely (their validity semantics are unchanged).
+        ai_assessment = None
+        _mv = model_version if model_version is not None else getattr(strategy, "model_version", None)
+        _is_ai = _mv is not None or model_provenance is not None or callable(getattr(strategy, "provenance_for", None))
+        if _is_ai:
+            _prov = model_provenance if model_provenance is not None else getattr(strategy, "model_provenance", None)
+            ai_assessment = assess_ai_model(_mv, _prov, config.split)
+            downgrade += [f"AI_MODEL: {r}" for r in ai_assessment.reasons]
         if problems:
             if confirmatory:
                 self.ledger.record(outcome=TrialOutcome.REJECTED, lifecycle="TERMINAL", attempt_id=attempt_id,
@@ -242,7 +254,8 @@ class ResearchEvaluationService:
             root=str(self.root), attempt_id=attempt_id, protocol_id=protocol.protocol_id, protocol_version=protocol.version,
             protocol_hash=p_hash, evaluation_started_at=started_at, holdout_id=hid, exposure_recorded=exposed,
             dataset_hash=dataset_hash, effective_confirmatory=confirmatory and not downgrade,
-            downgrade_reasons=tuple(downgrade), run_id=result.run_id, run_artifact_digest=digest)  # fmt: skip
+            downgrade_reasons=tuple(downgrade), run_id=result.run_id, run_artifact_digest=digest,
+            model_provenance=ai_assessment.provenance if ai_assessment else None)  # fmt: skip
         # analytics (only meaningful for a completed run)
         quality = assess_quality(market_data, universe_schedule, provenance)
         metrics = (compute_extended_metrics(

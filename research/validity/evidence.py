@@ -34,6 +34,7 @@ class EvaluationEvidence:
     downgrade_reasons: tuple[str, ...] = ()
     run_id: str | None = None
     run_artifact_digest: str | None = None
+    model_provenance: dict | None = None  # Slice 11: set only for AI-enabled evaluations
 
     def verify(self, protocol: ExperimentProtocol) -> dict:
         from research.validity.evaluation import ReproducibilityFailure, verify_stored_run  # noqa: PLC0415
