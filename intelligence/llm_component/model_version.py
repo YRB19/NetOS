@@ -26,9 +26,7 @@ UNKNOWN_CUTOFF_SENTINEL = datetime(9999, 12, 31, tzinfo=UTC)
 
 
 class CutoffBasis(str, Enum):  # noqa: UP042
-    PROVIDER_DOCUMENTED = (
-        "PROVIDER_DOCUMENTED"  # operator cites authoritative provider documentation
-    )
+    PROVIDER_DOCUMENTED = "PROVIDER_DOCUMENTED"  # operator cites authoritative provider documentation
     UNKNOWN = "UNKNOWN"
 
 

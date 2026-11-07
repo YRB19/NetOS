@@ -119,15 +119,11 @@ def _enum(cls, v, name):  # noqa: ANN001
         raise SchemaError(f"{name}: unknown value {str(v)[:40]!r}") from None
 
 
-def parse_interpretation(
-    raw: str | dict, valid_document_ids: tuple[str, ...]
-) -> DisclosureInterpretation:
+def parse_interpretation(raw: str | dict, valid_document_ids: tuple[str, ...]) -> DisclosureInterpretation:
     """Strictly validate raw model output against the schema and the exact input documents."""
     if isinstance(raw, str):
         text = raw.strip()
-        if text.startswith(
-            "```"
-        ):  # tolerate a fenced block ONLY; content is still strictly validated
+        if text.startswith("```"):  # tolerate a fenced block ONLY; content is still strictly validated
             text = text.strip("`")
             text = text[4:] if text[:4].lower() == "json" else text
         try:
