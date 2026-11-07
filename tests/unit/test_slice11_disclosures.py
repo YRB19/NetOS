@@ -13,9 +13,7 @@ from tests.unit._slice11_helpers import INGEST, T0, context, imap, item, load
 
 class IngestionTests(unittest.TestCase):
     def test_valid_ingestion_preserves_four_times_hash_and_ref(self):
-        s, rep = load(
-            [item(event_time="2024-02-27T00:00:00+00:00", source_reference="local:file-1")]
-        )
+        s, rep = load([item(event_time="2024-02-27T00:00:00+00:00", source_reference="local:file-1")])
         (r,) = s.records()
         self.assertEqual(r.status, DisclosureStatus.VALID)
         self.assertEqual((r.event_time.day, r.published_at.day), (27, 28))
@@ -26,13 +24,7 @@ class IngestionTests(unittest.TestCase):
         self.assertEqual(rep["by_status"], {"VALID": 1})
 
     def test_invalid_records_rejected_with_reason_never_dropped(self):
-        s, rep = load(
-            [
-                item(text=""),
-                item(src="X", published=None),
-                item(src="Y", published="2024-02-28T10:00:00"),
-            ]
-        )
+        s, rep = load([item(text=""), item(src="X", published=None), item(src="Y", published="2024-02-28T10:00:00")])
         self.assertEqual(rep["by_status"], {"REJECTED": 3})
         self.assertEqual(len(rep["rejections"]), 3)
         self.assertTrue(any("naive" in w for r in rep["rejections"] for w in r["warnings"]))
@@ -42,12 +34,7 @@ class IngestionTests(unittest.TestCase):
         self.assertEqual(s.records()[0].status, DisclosureStatus.REJECTED)
 
     def test_instrument_mapping_failure_is_unmapped_never_guessed(self):
-        s, rep = load(
-            [
-                item(isin=None, symbol="ZZZ"),
-                item(src="B", isin="INE999Z99999", symbol=None, exchange=None),
-            ]
-        )
+        s, rep = load([item(isin=None, symbol="ZZZ"), item(src="B", isin="INE999Z99999", symbol=None, exchange=None)])
         self.assertEqual(rep["by_status"], {"UNMAPPED": 2})
         self.assertIsNone(s.records()[0].instrument_id)
 
@@ -74,9 +61,7 @@ class IngestionTests(unittest.TestCase):
         s, _ = load([item()])
         r = s.records()[0]
         with self.assertRaises(ValueError):
-            DisclosureRecord(
-                **{**{f: getattr(r, f) for f in r.__dataclass_fields__}, "text": "tampered"}
-            )
+            DisclosureRecord(**{**{f: getattr(r, f) for f in r.__dataclass_fields__}, "text": "tampered"})
 
     def test_real_time_feed_is_not_connected(self):
         self.assertEqual(NotConnectedSource().status(), SourceStatus.NOT_CONNECTED)
@@ -115,19 +100,14 @@ class PointInTimeTests(unittest.TestCase):
         self.assertEqual(dict(ctx.excluded_counts).get("DUPLICATE"), 1)
 
     def test_bounded_and_lookback(self):
-        items = [
-            item(src=f"D{i}", text=f"text {i}", published=f"2024-02-{10 + i:02d}T10:00:00+00:00")
-            for i in range(8)
-        ]
+        items = [item(src=f"D{i}", text=f"text {i}", published=f"2024-02-{10 + i:02d}T10:00:00+00:00") for i in range(8)]
         s, _ = load(items)
         ctx = context(s, cfg=ContextConfig(max_documents=3, lookback_days=30))
         self.assertEqual(len(ctx.documents), 3)
         self.assertEqual(dict(ctx.excluded_counts)["OVER_MAX_DOCUMENTS"], 5)
         with self.assertRaises(ValueError):
             ContextConfig(max_documents=21)
-        self.assertTrue(
-            context(s, ts=T0 + timedelta(days=400), cfg=ContextConfig(lookback_days=7)).is_empty
-        )
+        self.assertTrue(context(s, ts=T0 + timedelta(days=400), cfg=ContextConfig(lookback_days=7)).is_empty)
 
     def test_empty_context_is_valid_and_hash_stable(self):
         s = DisclosureStore()
