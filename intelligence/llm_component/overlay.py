@@ -80,6 +80,12 @@ def adjust_candidate(
 
     if rec is None:
         return _no("NO_SIGNAL_RECORD")
+    # Exact FeatureSnapshot provenance: a signal may adjust only the candidate whose snapshot it was
+    # built for. Never inferred from instrument + timestamp alone.
+    if not rec.input_snapshot_id or not cand.input_snapshot_id:
+        return _no("SNAPSHOT_REFERENCE_MISSING")
+    if rec.input_snapshot_id != cand.input_snapshot_id:
+        return _no("SNAPSHOT_REFERENCE_MISMATCH")
     if not rec.has_signal:
         return _no(f"NO_ADJUSTMENT:{rec.provider_status.value}")
     it = rec.interpretation
@@ -99,37 +105,30 @@ def adjust_candidate(
     new_conf = min(1.0, max(0.0, cand.confidence + delta))
     if new_conf == cand.confidence:
         return _no("CLAMPED_NO_CHANGE")
-    digest = content_hash(
-        [cand.candidate_id, model_version.version_id, rec.context_hash, cfg.payload()]
-    )
+    digest = content_hash([cand.candidate_id, model_version.version_id, rec.context_hash, cfg.payload()])
     new = replace(
         cand,
         candidate_id=str(UUID((digest * 2)[:32])),
         confidence=new_conf,
-        rationale=(
-            f"{cand.rationale} | AI research signal (RESEARCH SIGNAL ONLY; confidence "
-            f"{cand.confidence:.4f}->{new_conf:.4f}, {it.sentiment.value}/{it.materiality.value}, "
-            f"docs={len(it.source_document_refs)}, {cfg.version})"
-        ),  # fmt: skip
+        rationale=(f"{cand.rationale} | AI research signal (RESEARCH SIGNAL ONLY; confidence "
+                   f"{cand.confidence:.4f}->{new_conf:.4f}, {it.sentiment.value}/{it.materiality.value}, "
+                   f"docs={len(it.source_document_refs)}, {cfg.version})"),  # fmt: skip
         model_version_id=model_version.version_id,
     )
-    return new, AdjustmentOutcome(
-        True, "APPLIED", cand.confidence, new_conf, new_conf - cand.confidence
-    )
+    return new, AdjustmentOutcome(True, "APPLIED", cand.confidence, new_conf, new_conf - cand.confidence)
 
 
 class DisclosureOverlayStrategy:
     """Wraps a base Strategy. Pure: only looks up precomputed SignalRecords; no network, no I/O."""
 
     def __init__(self, base, lookup: Callable[[str, datetime], SignalRecord | None],  # noqa: ANN001
-                 cfg: ConfidenceAdjustmentConfig, model_version: ModelVersion) -> None:  # fmt: skip
+                 cfg: ConfidenceAdjustmentConfig, model_version: ModelVersion,
+                 cutoff=None) -> None:  # noqa: ANN001  (CutoffDeclaration | None)  # fmt: skip
         errs = cfg.validate()
         if errs:
             raise ValueError("invalid ConfidenceAdjustmentConfig: " + "; ".join(errs))
         if model_version.parent_strategy_version != base.strategy_version_id:
-            raise ValueError(
-                "ModelVersion.parent_strategy_version must equal the base strategy_version_id"
-            )
+            raise ValueError("ModelVersion.parent_strategy_version must equal the base strategy_version_id")
         self.base, self._lookup, self.cfg, self.model_version = base, lookup, cfg, model_version
         self.base_strategy_version_id = base.strategy_version_id
         # The pipeline requires candidate.strategy_version_id == the run's strategy id, and baseline provenance
@@ -138,14 +137,11 @@ class DisclosureOverlayStrategy:
         self.strategy_version_id = base.strategy_version_id
         self.overlay_version_id = make_version_id(
             "ai_disclosure_overlay_v1",
-            {
-                "base": base.strategy_version_id,
-                "model_version": model_version.version_id,
-                "adjustment": cfg.payload(),
-            },
+            {"base": base.strategy_version_id, "model_version": model_version.version_id, "adjustment": cfg.payload()},
         )
         self.expected_feature_set_id = getattr(base, "expected_feature_set_id", None)
         self._prov: dict[str, dict] = {}
+        self._cutoff = cutoff
 
     def strategy_version(self):  # noqa: ANN201
         from domain.models.versions import Plane2Type, StrategyVersion
@@ -158,9 +154,7 @@ class DisclosureOverlayStrategy:
         out: list[CandidateTrade] = []
         for cand in self.base.generate_candidate_trades(snapshots, universe, previous_universe):
             rec = self._lookup(cand.instrument_id, cand.timestamp)
-            new, outcome = adjust_candidate(
-                cand, rec, self.cfg, self.model_version, self.overlay_version_id
-            )
+            new, outcome = adjust_candidate(cand, rec, self.cfg, self.model_version, self.overlay_version_id)
             self._prov[new.candidate_id] = {
                 "original_candidate_id": cand.candidate_id, "baseline_strategy_version_id": self.base_strategy_version_id,
                 "overlay_strategy_version_id": self.overlay_version_id, "model_version_id": self.model_version.version_id,
@@ -172,6 +166,19 @@ class DisclosureOverlayStrategy:
             }  # fmt: skip
             out.append(new)
         return out
+
+    @property
+    def model_provenance(self) -> dict:
+        """Cutoff provenance consumed by the enforced evaluation service. An undeclared cutoff is
+        reported as such (fails closed there); nothing is inferred or invented."""
+        c = self._cutoff
+        return {
+            "model_version_id": self.model_version.version_id,
+            "backbone_identifier": self.model_version.backbone_identifier,
+            "cutoff_basis": c.basis.value if c is not None else "UNDECLARED",
+            "cutoff_date": c.cutoff.isoformat() if c is not None and c.cutoff is not None else None,
+            "cutoff_source_note": c.source_note if c is not None else "",
+        }
 
     def provenance_for(self, candidate: CandidateTrade) -> dict | None:
         """Journal hook (duck-typed by the pipeline): the AI provenance of this exact candidate."""
