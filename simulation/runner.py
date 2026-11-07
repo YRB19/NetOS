@@ -382,9 +382,7 @@ class PipelineHarness(ResearchHarness):
                     run_id, t, cand.instrument_id, cand.candidate_id, snap, pf_before, sv, uv
                 )
                 rj.candidate(did, cand, t)
-                _prov = getattr(
-                    strategy, "provenance_for", None
-                )  # Slice 11: optional AI provenance hook
+                _prov = getattr(strategy, "provenance_for", None)  # Slice 11: optional AI provenance hook
                 if callable(_prov):
                     _p = _prov(cand)
                     if _p:

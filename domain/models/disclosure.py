@@ -119,9 +119,7 @@ class DisclosureContext:
     def __post_init__(self) -> None:
         require_non_empty_str(self.instrument_id, "instrument_id")
         object.__setattr__(
-            self,
-            "decision_timestamp",
-            require_aware_utc(self.decision_timestamp, "decision_timestamp"),
+            self, "decision_timestamp", require_aware_utc(self.decision_timestamp, "decision_timestamp")
         )
         object.__setattr__(self, "documents", tuple(self.documents))
         for d in self.documents:
@@ -147,9 +145,7 @@ class DisclosureContext:
             "max_documents": self.max_documents,
             "lookback_days": self.lookback_days,
         }
-        return hashlib.sha256(
-            json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()[:32]
+        return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
 
     @property
     def is_empty(self) -> bool:

@@ -311,36 +311,13 @@ RULES = RULES + _SLICE10_RULES
 # access. The Slice 6 invariant "no network modules inside intelligence/" is therefore preserved.
 _S11 = "Slice 11 / ADR-22: "
 _SLICE11_RULES: tuple[ForbiddenImportRule, ...] = tuple(
-    ForbiddenImportRule(
-        src, "model_providers", _S11 + "model providers are a leaf; compose explicitly"
-    )
-    for src in (
-        "domain",
-        "data",
-        "intelligence",
-        "risk_execution",
-        "observability",
-        "research",
-        "shared",
-        "governance",
-        "simulation",
-        "console_api",
-    )  # fmt: skip
+    ForbiddenImportRule(src, "model_providers", _S11 + "model providers are a leaf; compose explicitly")
+    for src in ("domain", "data", "intelligence", "risk_execution", "observability", "research",
+                "shared", "governance", "simulation", "console_api")  # fmt: skip
 ) + tuple(
-    ForbiddenImportRule(
-        "model_providers", target, _S11 + "providers hold no execution/risk/governance/data access"
-    )
-    for target in (
-        "risk_execution",
-        "governance",
-        "research",
-        "data",
-        "observability",
-        "simulation",
-        "console_api",
-        "intelligence.baseline",
-        "intelligence.llm_component.signals",
-        "intelligence.llm_component.overlay",
-    )  # fmt: skip
+    ForbiddenImportRule("model_providers", target, _S11 + "providers hold no execution/risk/governance/data access")
+    for target in ("risk_execution", "governance", "research", "data", "observability", "simulation",
+                   "console_api", "intelligence.baseline", "intelligence.llm_component.signals",
+                   "intelligence.llm_component.overlay")  # fmt: skip
 )
 RULES = RULES + _SLICE11_RULES
