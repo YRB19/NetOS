@@ -106,3 +106,6 @@ locking/transactional store) or if the operator rules a new field on `DecisionRe
 **ADR-23 (Slice 11): disclosure context is paired with a FeatureSnapshot by reference; `FeatureSnapshot` is unchanged.** Changing it would alter identity of every stored snapshot/fixture. `DisclosureContext.input_snapshot_id` + `context_hash` are journaled; old snapshots remain valid (tested).
 
 **Dependencies (Slice 11): none added.** Anthropic access uses the standard library (`urllib`); no SDK, LangChain/LangGraph or orchestration framework. Env: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`. No database or frontend framework added.
+
+
+**Slice 11 provider addition (no new ADR; within ADR-22):** `model_providers/nvidia_provider.py` and `factory.py` live in the same leaf package under the same import rules. NVIDIA hosted Chat Completions via the standard library; env `NVIDIA_API_KEY`, `NVIDIA_MODEL` (default candidate `moonshotai/kimi-k2-instruct`), `NVIDIA_BASE_URL` (default `https://integrate.api.nvidia.com/v1`, https only). Provider choice is explicit; there is no fallback to another provider. No dependency added. Endpoint/model ids are operator-supplied and unverified by this build.

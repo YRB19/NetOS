@@ -198,3 +198,11 @@ by redaction (normalisation now strips enums at every depth); reconciliation-req
 **Found during build:** the journal redactor masks keys containing "token" (usage fields renamed `usage_*_units`); journal payload numbers are persisted as strings (read model coerces).
 **Added:** see `docs/ai-disclosure-signal.md` §2. **Tests:** +80 (disclosures 17, AI component 33, pipeline integration 15, console 6, boundaries 9) + 4 frontend.
 **Not done:** real disclosure ingestion, live Anthropic call, Slice 12, Slice 13 governance.
+
+
+## 2026-11-07 - Slice 11 acceptance closure + NVIDIA provider
+**Baseline:** the Slice 11 tree (993 unittest, 43 frontend node tests). git HEAD `7c495da` (Slice 11 and earlier work uncommitted; nothing committed by this session).
+**Closure:** (1) `adjust_candidate` requires exact `input_snapshot_id` equality, reasons `SNAPSHOT_REFERENCE_MISSING/MISMATCH`. (2) `research/contamination/model_cutoff.assess_ai_model` wired into `ResearchEvaluationService.evaluate` (new optional `model_version`, `model_provenance`); `EvaluationEvidence.model_provenance` and report key `ai_model_provenance` are additive and absent for non-AI runs; `DisclosureOverlayStrategy` gained optional `cutoff` and a `model_provenance` property. (3) Prompt template v2: all interpolated values escaped, control chars dropped. (4) `SignalRecord.resolved_model_identifier(_status)`; both providers return `None` when the provider omits `model`.
+**Provider addition:** `model_providers/nvidia_provider.py`, `model_providers/factory.py` (explicit selection), smoke script `--provider nvidia|anthropic|stub` with `--confirm-live`, exit codes 0/1/2. No dependency added.
+**Tests:** +52 (closure 28, NVIDIA/selection/smoke 23, boundary 1). Final: 1045 unittest, 43 frontend. Both architecture checkers clean.
+**Not done / not claimed:** real provider calls, real disclosures, endpoint/model-id verification against NVIDIA, Slice 12, Slice 13.
