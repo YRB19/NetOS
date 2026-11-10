@@ -91,3 +91,7 @@ Document text, titles, ids, the instrument id and the timestamp are HTML/XML-esc
 - Cost: not computed unless the operator supplies verified `Pricing`. Limits, pricing, availability and terms are the operator's to confirm.
 - **Selection is explicit** (`model_providers/factory.select_provider`): `stub` | `anthropic` | `nvidia`. There is no default real provider and no fallback; a missing key for the chosen provider stops with `UNAVAILABLE` and nothing else is tried. The signal service never switches providers.
 - Smoke test (manual only): `python3 scripts/slice11_smoke.py --provider nvidia --confirm-live --disclosures <file> --instrument <id> --decision-time <iso> --isin-map ...` — exits 0 only if a schema-valid classification was returned (`classification_confirmed: true`); exits 1 on any failed call; 2 if not confirmed/configured. **Not run.**
+
+## Slice 12 addendum (evaluation)
+No Slice 11 contract changed. Evaluation uses `SignalRecord.to_payload()` unchanged, audits each signal (`research/ai_eval/pit_audit.py`), and records raw responses with `model_providers/replay.py` (`RecordingProvider`/`ReplayProvider`; replay never calls a provider). Recorded-fixture signals are `OFFLINE_FIXTURE`; they are not model outputs. See `docs/ai-vs-baseline-evaluation.md`.
+

@@ -206,3 +206,12 @@ by redaction (normalisation now strips enums at every depth); reconciliation-req
 **Provider addition:** `model_providers/nvidia_provider.py`, `model_providers/factory.py` (explicit selection), smoke script `--provider nvidia|anthropic|stub` with `--confirm-live`, exit codes 0/1/2. No dependency added.
 **Tests:** +52 (closure 28, NVIDIA/selection/smoke 23, boundary 1). Final: 1045 unittest, 43 frontend. Both architecture checkers clean.
 **Not done / not claimed:** real provider calls, real disclosures, endpoint/model-id verification against NVIDIA, Slice 12, Slice 13.
+
+## 2026-11-08 - Slice 12 AI vs baseline evaluation
+**Baseline:** uploaded NetOS tree, git HEAD `a80a41a`, clean; 1045 unittest OK, 43 frontend OK, import graph 0 violations (re-established, not assumed).
+**Slice 11 closure audit:** (1) snapshot id exact-equality verified per signal in the evaluation (0 mismatches); (2) cutoff enforced per signal in evaluation (`MODEL_CUTOFF_OVERLAP`) plus `assess_ai_model`; (3) hostile text escaped, cannot close its element (tested); (4) provider-returned model id preserved, distinct from requested (tested); (5) docs/schema/prompt ids agree (tested). No Slice 11 contract change. Noted, not changed: AI arms share the baseline run id by design.
+**Added:** `research/ai_eval/*`, `model_providers/replay.py`, `tools/ai_vs_baseline.py`, `tools/ai_vs_baseline_synthetic.py`, ADR-24, docs.
+**Defects found and fixed during build (all by running the evaluation, none hidden):** synthetic disclosures all shared one late ingestion time so no signal had context (point-in-time gate correctly excluded them; fixture corrected); signal coverage used all cycles as numerator against BUY/SELL candidates (4.2); PBO partition count not dividing the cycle count; headline crashed when an arm failed; spec prompt-template id not covered by the frozen-config gate.
+**Final:** 1121 unittest OK (+76), 43 frontend OK, import graph 0 violations.
+**Not done:** real provider/data evidence, Slice 13.
+

@@ -36,3 +36,7 @@ Free-text pre-registration is superseded for confirmatory runs by `ExperimentPro
 evaluation, structured criteria only. Exploratory runs are labelled; a reused holdout is never confirmatory.
 
 Closure: confirmatory status is granted only by `ResearchEvaluationService` (statistical-validation.md §11); a caller-supplied registration timestamp or holdout status has no effect.
+
+## Slice 12 addendum
+AI-vs-baseline evaluations use a separate frozen specification (`research/ai_eval/spec.py`, write-once registry under `ai_eval_specs/`) and the existing trial ledger and holdout registry (one confirmatory exposure per window). Evidence class caps the outcome at B unless data is real and signals are live-captured with a cutoff before the window. See `docs/ai-vs-baseline-evaluation.md`.
+
