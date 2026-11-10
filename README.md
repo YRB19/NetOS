@@ -1,151 +1,72 @@
-# NetOS — AI Trading Agent Research & Engineering Project
+# NetOS — Autonomous Indian-Equities Trading System (Research & Engineering)
 
-**⚠️ Work in progress.** This is an active research project, not a finished product. Nothing here is financial advice, no trading edge has been demonstrated, and no real capital is being traded. Live execution is intentionally gated and not yet built. Treat every result as infrastructure verification only.
+NetOS is a personal, single-operator project: a staged build towards a fully autonomous,
+capital-deploying trading system for Indian equities, under strict Waterfall discipline
+(Stage 0 research → 1 requirements → 2 architecture → 3 detailed design → slice-by-slice build).
+It is not a product, a signal service, or financial advice.
 
----
+> **Nothing here has been shown to be profitable, broker-compatible, or ready for live capital.**
+> All results are simulation/backtest on synthetic or offline data. Passing tests proves engineering
+> correctness, not trading skill.
 
-## What this project is
+## Status
 
-NetOS is a research-first effort to build an **autonomous AI trading agent** for **Indian equities using personal capital**, starting from the question raised by social-media demos (Instagram reels about "self-improving AI trading agents" / Grok-powered Polymarket agents) and validated against actual research rather than hype.
+| Area | State |
+|---|---|
+| Stages 0–3 (research, requirements, architecture, design) | Complete (`docs/00`–`05`) |
+| Implementation | Slices 0–12 complete; Slice 13+ not started |
+| Execution | Simulated broker only. No live broker adapter, no credentials, no real capital |
+| AI component | Bounded confidence-only overlay on deterministic Tier-2; stub provider; Slice 12 synthetic evaluation = Inconclusive |
+| Operator console | Local-only (127.0.0.1), read-only, no trading authority |
+| Verification | 1121 backend tests + 43 frontend tests pass; import-isolation lint: 0 violations |
 
-The original ideation and reverse-engineering work that shaped this project is documented in:
+## How to run it
 
-> `/Users/yoboxo/Developer/Developer/Claude Data/NetOS/Reverse Engineer Trading Agent.md`  
-> ChatGPT conversation analyzing four Instagram reels about autonomous AI trading agents, TradingAgents (TauricResearch), Paperclip, and Alex2Learn — consolidated into the architecture that NetOS implements today.
+See **README-DEV.md**. Short version:
 
-Key principles carried over from that ideation:
-
-* **The LLM should not have unrestricted control over a broker account.** A deterministic risk/execution layer sits between the intelligence layer and any order placement.
-* **Research before build.** Stage 0 verified the field's claims (TradingAgents, FinMem, Agent Market Arena, SEC "AI washing" enforcement, the Lobstar Wilde failure incident, etc.) before writing architecture. The field has more confident-sounding claims than independently verified ones; NetOS is built with that skepticism baked in.
-* **Self-improvement, if any, happens offline first.** Any self-improvement mechanism is confined to an isolated research/backtesting environment and can never touch live capital directly.
-
-## What it will be able to do (phased)
-
-| Phase | Capability | Status |
-|-------|-----------|--------|
-| Slices 0–8 (done) | Deterministic historical data ingestion, validation, normalization, versioning; Tier-1 equal-weight baseline; Tier-2 momentum baseline; offline research harness with split/contamination guards; decision journal & observability; order state machine & reconciliation; simulated broker; deterministic risk engine & sizing | **Complete** |
-| Slice 9 (done) | Research validity & statistical hardening of the evaluation harness (synthetic infrastructure) | **Complete** |
-| Slice 10 (done) | Private, read-only operator console / command centre | **Complete** |
-| Slice 11 (done, offline-tested) | Optional, disableable AI disclosure-classification overlay on Tier-2 (confidence only); providers: offline stub, Anthropic, NVIDIA hosted. **No real provider has been smoke-tested; no verified online disclosure source is connected.** | **Implemented; not yet live-tested** |
-| Slice 12 (not started) | AI-vs-baseline evaluation gate | Not started |
-| Slice 13 (not started) | Governance & Promotion prerequisites + paper-trading harness (governance is a mandatory prerequisite, not deferred) | Not started |
-| Future | Any LLM role beyond the bounded research signal, evaluated deterministically against baselines before promotion | Planned |
-| Future | Self-improvement loop confined to offline research; candidate artifacts promoted only through human-gated review | Planned |
-| Future | Staged autonomy progression (Level 0 advisory → Level 3 fully autonomous) per operator decision | Planned |
-| Future | Live execution path, technically designed but gated closed until regulatory conditions (SEBI algo framework, static IP, 10 OPS threshold, broker ToS review, etc.) are satisfied | Not started; gated |
-
-**Not built and not claimed:** live broker connection, real-money trading, LLM-driven execution (the AI overlay can only adjust a candidate's `confidence` and has no order, sizing or risk authority), demonstrated alpha, or any self-modifying code in production.
-
-## Architecture at a glance
-
-The system is five architecturally separated planes plus an isolated research environment:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ PLANE 0 — GOVERNANCE (operator-owned)                                   │
-│ Autonomy level · Risk constraints · Instrument universe · Kill switch   │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │ read-only to planes below
-┌────────────────────────────────▼─────────────────────────────────────────┐
-│ PLANE 1 — DATA                                                          │
-│ Ingestion → Validation/staleness → Normalization → Feature formation    │
-│ → Decision-log store (every decision's inputs recorded by version)      │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │
-┌────────────────────────────────▼─────────────────────────────────────────┐
-│ PLANE 2 — INTELLIGENCE (replaceable "brain")                             │
-│ Analysis → Candidate trade + confidence signal. Versioned. Swappable.    │
-│ Never has execution authority. Starts deterministic; LLM-assisted later. │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │ candidate trade + rationale (NOT an order)
-┌────────────────────────────────▼─────────────────────────────────────────┐
-│ PLANE 3 — RISK & EXECUTION (deterministic, non-LLM)                      │
-│ Cost estimation → Risk validation → Position sizing → Sanity checks      │
-│ → Order generation → Broker interface → Confirmation → Reconciliation    │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │
-┌────────────────────────────────▼─────────────────────────────────────────┐
-│ PLANE 4 — OBSERVABILITY & EVALUATION                                     │
-│ Outcome logging → Reconciliation vs. broker truth → Evaluation harness   │
-│ (offline, regime-segmented, contamination-checked) → Reporting           │
-└─────────────────────────────────────────────────────────────────────────┘
+```bash
+cd ~/Developer/NetOS && source .venv/bin/activate
+python tools/build_ui_demo_fixtures.py --out ./.demo-artifacts
+python -m console_api --root ./.demo-artifacts
+# open http://127.0.0.1:8765/   (Ctrl-C to stop)
+python -m unittest discover -s tests -t .      # run the test suite
 ```
 
-A sixth, fully separate **Research & Backtesting environment** consumes the same Plane 1 data contracts, produces candidate Plane 2 artifacts, and has **no write access to Plane 3, Plane 0, or any live broker**. Self-improvement experiments live only here.
+## Architecture in brief
 
-## Risk & safety posture
+Five planes plus an isolated research environment:
 
-* Plane 3 (risk & execution) is deterministic, non-LLM, and has hard veto power over Plane 2. It cannot be overridden by the intelligence layer.
-* Fail-closed by default: missing/stale data, malformed model output, broker failure, connectivity loss, and abnormal markets all route to "no new action."
-* Every decision is reconstructable after the fact: data version, code version, config, rationale, risk checks, broker confirmation, and realized cost are all logged.
-* Live execution is gated behind regulatory closure (SEBI retail algo framework, static IP, OAuth/2FA, broker ToS review for AI-driven order generation) — not merely a technical decision.
+0. Governance — operator-owned limits, autonomy level, kill switch
+1. Data — ingestion, validation, staleness, normalization, feature snapshots
+2. Intelligence — replaceable brain (Tier-1 buy-and-hold, Tier-2 12-1 momentum, AI overlay); emits `CandidateTrade`, never orders
+3. Risk & Execution — deterministic, non-LLM; risk engine RR-1..9, sizing, order lifecycle, reconciliation, broker abstraction
+4. Observability — hash-chained decision journal, audit trail
+5. Research — walk-forward harness, contamination guards, experiments; no path to live execution
 
-## Current status
+Principles: baseline rigor before AI; self-improvement confined to research and unable to touch risk
+rules or the kill switch; plane isolation enforced by an import-graph lint in CI; fail closed.
 
-Slices 0–11 are implemented (Slices 9–11 on synthetic infrastructure):
+## Not done / open gates before any live use
 
-* **Data pipeline** — CSV ingestion (Bhavcopy), validation, split adjustment, deterministic versioning, JSONL persistence
-* **Tier-1 baseline** — equal-weight BUY/HOLD/SELL advisory candidates
-* **Tier-2 momentum** — 12-1 momentum strategy
-* **Slice 5 research harness** — offline deterministic replay, simulated research accounting, cost integration, contamination guards
-* **Slice 6** — deterministic Risk Engine (RR-1..RR-9, fail-closed), sizing, simulated broker
-* **Slice 7** — order state machine, reconciliation hardening, crash recovery
-* **Slice 8** — durable hash-chained decision journal & observability
-* **Slice 9** — research validity & statistical hardening (enforced evaluation workflow)
-* **Slice 10** — read-only operator console / command centre
-* **Slice 11** — optional AI disclosure-signal adapter: point-in-time disclosure store, strict output schema, offline stub + Anthropic + NVIDIA providers (`model_providers/`), confidence-only overlay, cutoff-gated confirmatory evaluation. See `docs/ai-disclosure-signal.md`.
+- Indian tax classification of frequent/automated trading.
+- Broker Terms of Service: Zerodha, Upstox and FYERS restrict fully automated trading contractually.
+- Confirmation of the NSE/ISF order-rate circular and equities order-type rules.
+- Operator decisions: numeric exposure/drawdown limits, latency bounds, profitability definition.
+- No Tier-A (independently verified live) evidence exists in the field for LLM trading agents.
 
-Test coverage: see `docs/slice-status.md` for the current verified counts (unittest, frontend node tests) and architecture-checker results.
+## Repository layout
 
-**Explicitly not yet present:** a live broker, broker credentials, a live execution path, demonstrated profitability, a connected real-time disclosure feed, and any real-provider smoke test.
-
-**LLM status (accurate as of Slice 11):** an *optional* LLM research-signal adapter exists and is exercised only with an offline stub in the test suite. The Anthropic and NVIDIA provider adapters are implemented and unit-tested against mocked transports; neither has been called for real. The model has no tools, no credentials to any broker, and cannot change BUY/SELL/HOLD, size, risk, or orders. Confidence adjustments currently do not alter sizing or simulated P&L (confidence is not a sizing/risk input). Slice 12 (the evaluation of whether the signal helps) has not started. A passing run is infrastructure verification, not evidence of alpha.
-
-## Setup & validation
-
-Python 3.11 or newer; no runtime third-party dependencies.
-
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest -q
-ruff check .
-ruff format --check .
-mypy domain shared
-python -m shared.arch_lint.cli .
+```
+governance/ data/ domain/ intelligence/ risk_execution/ observability/ research/ shared/
+simulation/ model_providers/    code planes and leaf packages
+console_api/ frontend/          read-only operator console (stdlib server + no-build UI)
+tools/ scripts/ tests/ docs/    fixtures & evaluations, lint/smoke, test suites, documentation
 ```
 
-`python run_tests.py` also runs the full pytest suite. The CI workflow runs these checks.
+Docs: `docs/00`–`05` stage series (historical, versioned, never silently edited);
+`docs/slice-status.md` and `docs/implementation-log.md` for build history;
+`docs/operator-console.md` for the console.
 
-## Project structure
+## Disclaimer
 
-- `domain/models/`: validated domain objects, serialization and order transitions
-- `data/adapters/`, `validation/`, `normalization/`: CSV ingestion, validation, split adjustment, deterministic versioning and JSONL persistence
-- `data/features/`: permitted universe and immutable, attributable feature snapshots
-- `intelligence/baseline/`: Tier-1 equal-weight BUY/HOLD/SELL advisory candidates
-- `intelligence/tier2/`: Tier-2 momentum strategy
-- `shared/costs/`: Decimal cost inputs, versioned schedules and pure calculations
-- `shared/time/`, `versioning/`, `arch_lint/`: common utilities and architecture checks
-- `simulation/`: research/simulation orchestrator (strategy → risk → sizing → broker → portfolio)
-- `tests/`: cumulative regression coverage and cross-slice integration tests
-- `docs/`: design records, component contracts, source history and merge audit
-- `scripts/`: utility scripts
-
-The primary historical path is:
-`load_bhavcopy_csv` → `normalize_bhavcopy_batch` → JSONL persistence (optional) → `build_feature_snapshots` → `Tier1EqualWeightBuyHold.generate_candidate_trades`.
-
-All consumers use the same canonical domain objects. `CostModel.estimate` accepts an explicit hypothetical quantity and price; advisory strategy weights never become executable quantities automatically.
-
-See `docs/data-ingestion.md`, `docs/feature-context.md`, `docs/baseline-tier1.md`, `docs/cost-model.md`, `docs/risk-engine.md`, `docs/sizing.md`, `docs/simulated-broker.md`, `docs/research-harness.md`, `docs/research-protocol.md`, `docs/decision-journal-observability.md`, and `docs/slice-1-4-reconciliation.md`.
-
-## References
-
-* Original ideation chat (source of the project vision): `Reverse Engineer Trading Agent.md`
-* `docs/00-Project-Understanding-Report.md` — Stage 0 research verification report
-* `docs/04-Stage2-System-Architecture-v0_1.md` — system architecture (Planes 0–4, ADRs, build philosophy)
-* `docs/slice-status.md` — cumulative slice status and test counts
-
----
-
-**Bottom line:** NetOS is a serious, research-grounded attempt to answer whether an LLM-based multi-agent system can generate real trading alpha in Indian equities. It starts boring and deterministic, keeps the LLM out of the execution path, and only adds complexity when a rigorous, contamination-controlled evaluation justifies it. It is a work in progress — expect the scope, architecture, and conclusions to change as evidence accumulates.
+Research software for a single operator. Not investment advice.
