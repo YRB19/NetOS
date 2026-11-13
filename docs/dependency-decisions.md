@@ -112,3 +112,22 @@ locking/transactional store) or if the operator rules a new field on `DecisionRe
 
 **ADR-24 (Slice 12): evaluation analysis in `research/ai_eval/`, orchestration in `tools/`, record/replay in `model_providers/replay.py`.** Problem: the comparison needs the research analysis layer and the full pipeline (risk, sizing, simulated broker), but `research` may not import execution and nothing may import `simulation`. Options: (a) let research import the pipeline; (b) put the evaluation in `simulation/`; (c) pure analysis in `research/`, composition in an explicit script outside the planes. Decision (c), mirroring ADR-22. Replay of recorded provider responses lives in the leaf `model_providers/` (no network code; imports only `intelligence.llm_component.{provider,prompt}` types plus the hashing utility). No dependency added. Consequence recorded, not decided: `confidence` is not consumed by sizing/risk, so AI arms are path-identical to Tier-2; letting it matter is a governed contract change for a later ADR. Invalidated if a plane needs to run the comparison itself.
 
+
+
+## Slice 13 ADRs (2026-11-11)
+
+### ADR-25 — Market lanes are independent; US internal execution stays BLOCKED
+**Problem:** two markets must run as separate experiments, but `shared.costs.CostEstimate` and the simulated broker are India-shaped (STT/SEBI/GST/stamp duty).
+**Options:** (a) reuse the India estimate for US with relabelled fields; (b) build a US-only executor; (c) block US internal execution until a jurisdiction-neutral cost breakdown exists.
+**Decision:** (c). `markets/` holds lane specs, readiness gating and a standalone, unverified US cost model that is wired to nothing. (a) would mislabel costs; (b) is a competing execution implementation, which the brief forbids.
+**Consequence:** US internal sessions report `BLOCKED` and raise `InternalPathBlocked` before any broker call. **Invalidated by:** a jurisdiction-neutral cost interface (follow-up slice).
+
+### ADR-26 — Neutral read-only `prediction_ledger/` leaf; writer in `observability`
+**Problem:** the evaluator (in `research`) must read the ledger, but an existing guard forbids `research` importing `observability`.
+**Decision:** record models + verifying reader live in a neutral leaf package; the append-only writer stays in `observability/prediction_ledger/ledger.py`. Existing guard not weakened. Same split for observations (`data/live/reader.py` vs `store.py`).
+
+### ADR-27 — External paper is a contained comparator
+Frozen `ApprovedIntent`; deterministic platform-scoped client order id; unknown results resolved by read-back before any retry; all adapter exceptions contained in the mirror; separate ledger. Only a mock ships; real platform status stays `NOT CONFIGURED` until verified.
+
+### ADR-28 — Readiness requires cited primary sources
+A lane/branch is `OPERATIONAL`/`AVAILABLE` only if every required check is `VERIFIED` with a primary-source reference and access date. Shipped defaults verify nothing, so nothing is operational.
