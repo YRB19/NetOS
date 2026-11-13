@@ -215,3 +215,11 @@ by redaction (normalisation now strips enums at every depth); reconciliation-req
 **Final:** 1121 unittest OK (+76), 43 frontend OK, import graph 0 violations.
 **Not done:** real provider/data evidence, Slice 13.
 
+
+
+## 2026-11-11 - Slice 13 multi-market live-data shadow & dual paper-execution harness
+**Baseline:** uploaded tree, git HEAD `a80a41a` (Slice 11/12 work uncommitted in the tree, nothing committed by this session); 1121 unittest OK, both import-graph checkers 0 violations, re-run not assumed. Slices 7-12 and the console were inspected on disk, not taken from summaries.
+**Added:** `markets/`, `prediction_ledger/`, `data/live/`, `observability/prediction_ledger/`, `research/prediction_eval/`, `research/confirmatory/`, `risk_execution/external_paper/`, `simulation/multi_market/`, `tools/multi_market_synthetic_demo.py`, Slice 13 arch rules, ADR-25..28, `docs/multi-market-shadow.md`, `docs/market-source-feasibility.md`.
+**Found by existing guards and fixed (guards not weakened):** (1) `research` may not import `observability` -> split into neutral `prediction_ledger/` leaf (ADR-26); (2) execution path may not import `urllib` -> endpoint guard uses a strict regex; (3) duplicate class names across packages -> renamed (`PredictionEventType`, `Confirmatory*`).
+**Blocked by design:** US internal execution (India-only cost estimate, ADR-25). **Not verified (no network):** every provider, platform, entitlement and right.
+**Not done:** governance/promotion, real adapters, real AI predictions, console panel, any live data-shadow session or performance claim.

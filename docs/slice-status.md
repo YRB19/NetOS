@@ -150,3 +150,9 @@ Backend, API, CSP, risk rules, strategy and storage untouched; no Slice 11 work;
 **Tests:** 1045 -> 1121 unittest (+76: spec/stats 17, PIT audit 12, decision/attribution/replay/report 16, integration/adversarial/closure/architecture 31). 43 frontend node tests OK (unchanged). Import-graph 0 violations; compileall clean. NOT run: pytest, ruff, mypy, browser checks (unavailable). No existing test modified or removed.
 **Not done / not claimed:** real provider call, real disclosures or market data, walk-forward/regime analysis of the AI comparison, annualised metrics, Slice 13. No promotion, live path or autonomy change.
 
+
+
+## Slice 13 — Multi-market live-data shadow & dual paper-execution harness (2026-11-11)
+**Status: INFRASTRUCTURE COMPLETE; NO LANE OPERATIONAL; NOT an evidence slice.** Lane registry and per-lane readiness, live-observation capture with quality engine and tamper-evident store, hash-chained AI prediction ledger, independent read-only evaluator with coverage/INSUFFICIENT_SAMPLE handling, per-market confirmatory protocol machinery, contained external-paper mirror (mock only), 8-session matrix, per-lane reports with no combined performance. Details: `docs/multi-market-shadow.md`, `docs/market-source-feasibility.md`.
+**Lane status (shipped defaults):** IN data `BLOCKED`, internal `ENGINEERING_ONLY`, external `BLOCKED`; US data `ENGINEERING_ONLY`, internal `BLOCKED` (ADR-25), external `MOCK_ONLY`.
+**Still true:** Slice 12 Outcome B (inconclusive) unchanged; no real data source, platform or AI prediction; Governance & Promotion not implemented (not in this brief).
