@@ -36,6 +36,8 @@ FIRST_PARTY_TOP_LEVEL = {
     "simulation",
     "console_api",
     "model_providers",
+    "markets",
+    "prediction_ledger",
 }
 
 

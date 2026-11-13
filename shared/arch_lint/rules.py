@@ -321,3 +321,42 @@ _SLICE11_RULES: tuple[ForbiddenImportRule, ...] = tuple(
                    "intelligence.llm_component.overlay")  # fmt: skip
 )
 RULES = RULES + _SLICE11_RULES
+
+
+# ---------------------------------------------------------------------------
+# Slice 13 additions — multi-market live-data shadow (ADR-25..ADR-28)
+# ---------------------------------------------------------------------------
+_S13 = "Slice 13 / ADR-25..28: "
+_S13_PLANES = ("domain", "data", "intelligence", "risk_execution", "observability", "research", "simulation",
+               "governance", "console_api", "model_providers")  # fmt: skip
+_SLICE13_RULES: tuple[ForbiddenImportRule, ...] = (
+    tuple(ForbiddenImportRule("markets", t, _S13 + "lane definitions are a pure leaf (shared only)") for t in _S13_PLANES)
+    + tuple(ForbiddenImportRule("prediction_ledger", t, _S13 + "read-only ledger contracts are a leaf (markets/shared only)")
+            for t in _S13_PLANES)
+    + tuple(
+        ForbiddenImportRule("research", t, _S13 + "the evaluator is read-only: no writers, adapters or execution")
+        for t in ("data.live.store", "data.live.adapters", "observability.prediction_ledger.ledger",
+                  "risk_execution.external_paper", "simulation.multi_market")  # fmt: skip
+    )
+    + tuple(
+        ForbiddenImportRule("intelligence", t, _S13 + "AI has no path to the prediction writer, observations or external paper")
+        for t in ("observability.prediction_ledger", "prediction_ledger", "risk_execution.external_paper", "data.live", "markets")
+    )
+    + tuple(
+        ForbiddenImportRule("risk_execution.external_paper", t, _S13 + "external comparator holds no strategy/AI/evaluation access")
+        for t in ("research", "intelligence", "data", "observability", "simulation", "model_providers")
+    )
+    + tuple(
+        ForbiddenImportRule("observability.prediction_ledger", t, _S13 + "ledger is independent of strategies, AI, execution and data adapters")
+        for t in ("intelligence", "risk_execution", "simulation", "research", "data", "model_providers")
+    )
+    + tuple(
+        ForbiddenImportRule("data.live", t, _S13 + "observation capture is independent of AI, strategies, execution and evaluation")
+        for t in ("intelligence", "risk_execution", "research", "observability", "simulation", "model_providers")
+    )
+    + tuple(
+        ForbiddenImportRule(src, "risk_execution.external_paper", _S13 + "external comparator is wired only by simulation composition")
+        for src in ("domain", "data", "observability", "governance", "console_api", "model_providers")
+    )
+)
+RULES = RULES + _SLICE13_RULES

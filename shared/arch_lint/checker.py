@@ -69,6 +69,8 @@ KNOWN_TOP_LEVEL_PACKAGES = frozenset(
         "simulation",
         "console_api",
         "model_providers",
+        "markets",
+        "prediction_ledger",
     }
 )
 
